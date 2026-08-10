@@ -140,7 +140,8 @@ window.__ModuleLoader__.load({
         '  border-radius: 8px; border: 1px solid rgba(255, 255, 255, .3);',
         '  background: var(--dsw-alias-text-accent, #4c9aff); color: #fff;',
         '  font-family: var(--dsw-font-family, system-ui); font-size: 10px; font-weight: 700;',
-        '  box-shadow: 0 1px 4px rgba(0,0,0,.35); pointer-events: none; }',
+        '  box-shadow: 0 1px 4px rgba(0,0,0,.35); pointer-events: auto; cursor: pointer; }',
+        '.dsh-ann-num:hover { filter: brightness(1.15); }',
       ].join('\n')
       document.head.appendChild(style)
     }
@@ -249,6 +250,19 @@ window.__ModuleLoader__.load({
     function findNormSpan(full, quote) {
       var spans = allNormSpans(full, quote)
       return spans.length > 0 ? spans[0] : null
+    }
+
+    /** 批注芯片差异变体：选区文本里芯片是「Annotation N」（无冒号），而消息行
+     *  渲染文本可能是「Annotation N：」（React 重渲染后冒号恢复）——匹配失败时
+     *  用变体重试，抹平该差异。 */
+    function quoteVariants(quote) {
+      var out = [quote]
+      var re = /Annotation[\s\u200b\u200c\u200d\u00ad]*(\d+)/gi
+      var m
+      while ((m = re.exec(quote)) !== null) {
+        out.push(quote.slice(0, m.index) + 'Annotation ' + m[1] + '：' + quote.slice(m.index + m[0].length))
+      }
+      return out
     }
 
     function allPositionsOf(el, quote) {
@@ -419,8 +433,20 @@ window.__ModuleLoader__.load({
               if (scIt > bestItScore) { bestItScore = scIt; bestIt = rngIt }
             }
             if (bestIt !== null && (saved.ctxBefore === '' || bestItScore > 0)) return bestIt
-            // 严格纪律：锚点消息还在但原文匹配不上 → 直接放弃（脚标隐藏），
-            // 绝不跨消息模糊搜索——那是「跳到旧轮次」的根源。
+            // 锚点消息还在但原文匹配不上：先试批注芯片差异变体（「Annotation N」
+            // vs「Annotation N：」）在**同一条消息内**宽松重定位——绝不跨消息
+            // 模糊搜索（那是「跳到旧轮次」的根源，v1.3.6 纪律）。
+            var variants = quoteVariants(quote)
+            for (var vi = 0; vi < variants.length; vi++) {
+              var vsp = allNormSpans(itText, variants[vi])
+              for (var vj = 0; vj < vsp.length; vj++) {
+                var vrng = rangeFromOffset(item, vsp[vj].start, vsp[vj].end - vsp[vj].start)
+                if (vrng !== null) return vrng
+              }
+              var vflex = findRangeFlexible(item, variants[vi])
+              if (vflex !== null) return vflex
+            }
+            // 同消息内确实定位不到 → 放弃（脚标隐藏）。
             return null
           }
         } catch (_) { return null }
@@ -561,6 +587,7 @@ window.__ModuleLoader__.load({
 
       var ui = {
         mode: 'closed',      // closed | actions | editing | composing
+        editingId: null,     // 非空 = 正在编辑该 id 的已有批注（点角标进入）
         quote: '',
         quotes: [],          // [{ id, text, note, range, seqKey, rowHead, textOffset, ctxBefore, ctxAfter }]
         noteDraft: '',
@@ -845,7 +872,7 @@ window.__ModuleLoader__.load({
           head.className = 'dsh-ann-card-head'
           var title = document.createElement('div')
           title.className = 'dsh-ann-card-title'
-          title.textContent = '添加批注'
+          title.textContent = ui.editingId !== null ? '编辑批注' : '添加批注'
           head.appendChild(title)
           head.appendChild(iconButton('dsh-ann-icon', ICONS.close, '取消', closeToolbar))
           card.appendChild(head)
@@ -979,6 +1006,12 @@ window.__ModuleLoader__.load({
             placed.push({ left: chipLeft, top: chipTop })
             chip.style.left = chipLeft + 'px'
             chip.style.top = chipTop + 'px'
+            ;(function (q) {
+              chip.addEventListener('click', function (ev) {
+                ev.stopPropagation()
+                openEditorFor(q)
+              })
+            })(q)
             overlay.appendChild(chip)
           }
         }
@@ -995,10 +1028,14 @@ window.__ModuleLoader__.load({
           if (sel === null || sel.isCollapsed || sel.rangeCount === 0) return anchor
           var live = sel.getRangeAt(0)
           var liveText = live.toString()
-          if (liveText.trim() !== text && liveText.trim().replace(/\s+/g, ' ') !== text.replace(/\s+/g, ' ')) {
-            return anchor
+          // 选区文本与 settle 快照一致才持有 live range；不一致（选区微变、DOM
+          // 被批注芯片等装饰改写）时也绝不返回全空锚——尽力抓行级锚点
+          // （seqKey/rowHead），让 locateQuote 在锚点消息内宽松重定位。
+          var textMatch = liveText.trim() === text
+            || liveText.trim().replace(/\s+/g, ' ') === text.replace(/\s+/g, ' ')
+          if (textMatch) {
+            anchor.range = live.cloneRange()
           }
-          anchor.range = live.cloneRange()
           var node = live.commonAncestorContainer
           var el = node instanceof Element ? node : (node !== null ? node.parentElement : null)
           while (el !== null && el !== document.body && !el.hasAttribute('data-chat-anchor-key')) {
@@ -1006,12 +1043,14 @@ window.__ModuleLoader__.load({
           }
           if (el !== null && el.hasAttribute('data-chat-anchor-key')) {
             anchor.seqKey = el.getAttribute('data-chat-anchor-key') || ''
-            var itemText = el.textContent || ''
-            var realOff = offsetOfRangeInRow(el, live)
-            if (realOff >= 0) {
-              anchor.textOffset = realOff
-              anchor.ctxBefore = itemText.slice(Math.max(0, realOff - 24), realOff)
-              anchor.ctxAfter = itemText.slice(realOff + text.length, realOff + text.length + 24)
+            if (textMatch) {
+              var itemText = el.textContent || ''
+              var realOff = offsetOfRangeInRow(el, live)
+              if (realOff >= 0) {
+                anchor.textOffset = realOff
+                anchor.ctxBefore = itemText.slice(Math.max(0, realOff - 24), realOff)
+                anchor.ctxAfter = itemText.slice(realOff + text.length, realOff + text.length + 24)
+              }
             }
           }
           var row = assistantRowOf(live.commonAncestorContainer)
@@ -1026,7 +1065,24 @@ window.__ModuleLoader__.load({
         ui.mode = 'editing'
         ui.noteDraft = ''
         ui.error = null
+        ui.editingId = null
         ui.pendingAnchor = captureAnchor(ui.quote)
+        render()
+      }
+
+      /** 点击角标数字 → 重新打开该批注的编辑面板（预填批注内容，可修改后保存）。 */
+      function openEditorFor(q) {
+        ui.mode = 'editing'
+        ui.quote = q.text
+        ui.noteDraft = q.note !== undefined ? q.note : ''
+        ui.error = null
+        ui.editingId = q.id
+        ui.pendingAnchor = null
+        var range = locateQuote(q.text, q)
+        var rect = range !== null ? range.getBoundingClientRect() : null
+        ui.pos = rect !== null && rect.width > 0
+          ? placeAbove(rect, 40)
+          : { left: 8, top: 8 }
         render()
       }
 
@@ -1069,12 +1125,30 @@ window.__ModuleLoader__.load({
       function saveAnnotation() {
         var text = ui.quote
         if (text === '') { ui.error = '没有选中的内容'; render(); return }
+        var note = ui.noteDraft.trim()
+        // 编辑已有批注（点击角标进入）：按 id 更新批注内容。
+        if (ui.editingId !== null) {
+          for (var ei = 0; ei < ui.quotes.length; ei++) {
+            if (ui.quotes[ei].id === ui.editingId) {
+              ui.quotes[ei].note = note
+              ui.editingId = null
+              ui.pendingAnchor = null
+              ui.noteDraft = ''
+              ui.error = null
+              closeToolbar()
+              updateChip()
+              renderMarkers()
+              return
+            }
+          }
+          ui.editingId = null
+        }
         if (!ui.quotes.some(function (q) { return q.text === text })) {
           var a = ui.pendingAnchor || { range: null, seqKey: '', rowHead: '', textOffset: -1, ctxBefore: '', ctxAfter: '' }
           ui.quotes.push({
             id: 'q-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6),
             text: text,
-            note: ui.noteDraft.trim(),
+            note: note,
             range: a.range,
             seqKey: a.seqKey,
             rowHead: a.rowHead,
@@ -1107,6 +1181,7 @@ window.__ModuleLoader__.load({
         ui.error = null
         ui.busy = false
         ui.lastKey = ''
+        ui.editingId = null
         render()
       }
 
