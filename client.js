@@ -22,7 +22,9 @@
 // 判别式与 dsh-external/navbar 一致：助手行 = [data-time-hover-root] 且不含
 // user bubble（[class*="bubble"]）。
 window.__ModuleLoader__.load({
-  id: 'annotation-for-dsh',
+  // 必须与 package.json "name" 完全一致，否则 client-modules 报：
+  // bundle loaded without registering "@dsh-external/dsh-annotation"
+  id: '@dsh-external/dsh-annotation',
   factory: (require) => {
     'use strict'
     var module = { exports: {} }
@@ -1327,12 +1329,11 @@ window.__ModuleLoader__.load({
         return null
       }
 
-      /** 一次性可见诊断（不刷屏）：标记行 + toast 提示。 */
+      /** 一次性诊断（仅控制台，不打扰用户）：标记行 + 原因。 */
       function markRowDiag(row, msg) {
         if (row.hasAttribute('data-annotation-diag')) return
         row.setAttribute('data-annotation-diag', '')
         console.warn('[annotation] ' + msg, row)
-        showToast('批注芯片：' + msg)
       }
 
       /** 扫描所有已结束流式输出的助手行：把「Annotation N：」替换为可悬浮芯片。 */
@@ -1519,7 +1520,7 @@ window.__ModuleLoader__.load({
       }
     }
 
-    exports.name = 'annotation-for-dsh-client'
+    exports.name = '@dsh-external/dsh-annotation'
     exports.inject = ['sessions', 'conversation']
     exports.apply = apply
 
