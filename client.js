@@ -1396,7 +1396,11 @@ window.__ModuleLoader__.load({
         for (var i = 0; i < rows.length; i++) {
           var el = rows[i]
           if (!isAssistantRow(el)) continue
-          if (el.hasAttribute('data-streaming')) continue
+          // 新版 data-streaming 标记在 AssistantMarkdown 内部元素上（行元素
+          // 本身没有）——必须查行内，否则流式输出途中就把「Annotation N：」
+          // 替换成芯片，与 React 正在更新的文本节点冲突，整条回复可能渲染
+          // 异常（表现为看不到回复消息）。
+          if (el.hasAttribute('data-streaming') || el.querySelector('[data-streaming]') !== null) continue
           if (el.querySelector('[data-annotation-reply-chip]') !== null) continue
           if ((el.textContent || '').indexOf('Annotation') === -1) continue
           var items = findPrevAnnotationItems(el)
