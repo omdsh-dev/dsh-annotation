@@ -198,6 +198,31 @@ window.__ModuleLoader__.load({
       return rangeFromOffset(el, start, quote.length)
     }
 
+    /** 空白完全剥离匹配：返回 quote 在 full 中的所有原始偏移区间 [{start,end}]。
+     *  解决选区文本跨块级元素（GenUI 表格单元格等）带出 \n、而 DOM textContent
+     *  无此空白导致的匹配失败（此前会掉进宽松匹配命中旧轮次）。 */
+    function allNormSpans(full, quote) {
+      var nq = quote.replace(/\s+/g, '')
+      if (nq === '') return []
+      var nf = ''
+      var map = []
+      for (var i = 0; i < full.length; i++) {
+        if (!/\s/.test(full[i])) { nf += full[i]; map.push(i) }
+      }
+      var out = []
+      var idx = nf.indexOf(nq)
+      while (idx !== -1) {
+        out.push({ start: map[idx], end: map[idx + nq.length - 1] + 1 })
+        idx = nf.indexOf(nq, idx + 1)
+      }
+      return out
+    }
+
+    function findNormSpan(full, quote) {
+      var spans = allNormSpans(full, quote)
+      return spans.length > 0 ? spans[0] : null
+    }
+
     function allPositionsOf(el, quote) {
       var full = el.textContent || ''
       var out = []
@@ -318,13 +343,13 @@ window.__ModuleLoader__.load({
       return null
     }
 
-    /** 定位批注的 Range：消息 seq 锚定优先，文本重搜兜底。 */
+    /** 定位批注的 Range：消息 seq 锚定优先，空白不敏感重搜兜底。 */
     function locateQuote(quote, saved) {
       if (saved !== undefined && saved !== null && saved.range && saved.range.startContainer) {
         try {
           if (saved.range.startContainer.isConnected && saved.range.endContainer.isConnected) {
             var t = saved.range.toString()
-            if (t === quote || t.replace(/\s+/g, ' ') === quote.replace(/\s+/g, ' ')) {
+            if (t.replace(/\s+/g, '') === quote.replace(/\s+/g, '')) {
               return saved.range
             }
           }
@@ -337,10 +362,9 @@ window.__ModuleLoader__.load({
           if (item !== null) {
             var itText = item.textContent || ''
             if (saved.textOffset >= 0) {
-              var itOff = Math.min(saved.textOffset, Math.max(0, itText.length - quote.length))
-              if (itText.slice(itOff, itOff + quote.length) === quote
-                || itText.slice(itOff, itOff + quote.length).replace(/\s+/g, ' ') === quote.replace(/\s+/g, ' ')) {
-                var itRange = rangeFromOffset(item, itOff, quote.length)
+              var sp0 = findNormSpan(itText, quote)
+              if (sp0 !== null && Math.abs(sp0.start - saved.textOffset) <= 2) {
+                var itRange = rangeFromOffset(item, sp0.start, sp0.end - sp0.start)
                 if (itRange !== null) return itRange
               }
             }
@@ -348,9 +372,9 @@ window.__ModuleLoader__.load({
               var itIdx = itText.indexOf(saved.ctxBefore)
               if (itIdx !== -1) {
                 var itNear = itIdx + saved.ctxBefore.length
-                var itSeg = itText.slice(itNear, itNear + quote.length)
-                if (itSeg === quote || itSeg.replace(/\s+/g, ' ') === quote.replace(/\s+/g, ' ')) {
-                  var itRange2 = rangeFromOffset(item, itNear, quote.length)
+                var sp1 = findNormSpan(itText.slice(itNear), quote)
+                if (sp1 !== null) {
+                  var itRange2 = rangeFromOffset(item, itNear + sp1.start, sp1.end - sp1.start)
                   if (itRange2 !== null) return itRange2
                 }
               }
@@ -363,10 +387,9 @@ window.__ModuleLoader__.load({
           var rowText = rows[r].textContent || ''
           if (rowText.slice(0, 24) !== saved.rowHead) continue
           if (saved.textOffset >= 0) {
-            var off = Math.min(saved.textOffset, Math.max(0, rowText.length - quote.length))
-            if (rowText.slice(off, off + quote.length) === quote
-              || rowText.slice(off, off + quote.length).replace(/\s+/g, ' ') === quote.replace(/\s+/g, ' ')) {
-              var range = rangeFromOffset(rows[r], off, quote.length)
+            var spR = findNormSpan(rowText, quote)
+            if (spR !== null && Math.abs(spR.start - saved.textOffset) <= 2) {
+              var range = rangeFromOffset(rows[r], spR.start, spR.end - spR.start)
               if (range !== null) return range
             }
           }
@@ -374,20 +397,20 @@ window.__ModuleLoader__.load({
             var bIdx = rowText.indexOf(saved.ctxBefore)
             if (bIdx !== -1) {
               var near = bIdx + saved.ctxBefore.length
-              var seg = rowText.slice(near, near + quote.length)
-              if (seg === quote || seg.replace(/\s+/g, ' ') === quote.replace(/\s+/g, ' ')) {
-                var range2 = rangeFromOffset(rows[r], near, quote.length)
+              var spR2 = findNormSpan(rowText.slice(near), quote)
+              if (spR2 !== null) {
+                var range2 = rangeFromOffset(rows[r], near + spR2.start, spR2.end - spR2.start)
                 if (range2 !== null) return range2
               }
             }
           }
-          var positions = allPositionsOf(rows[r], quote)
+          var spans = allNormSpans(rowText, quote)
           var bestRow = null
           var bestRowScore = -1
-          for (var pp = 0; pp < positions.length; pp++) {
-            var rng = rangeFromOffset(rows[r], positions[pp], quote.length)
+          for (var pp = 0; pp < spans.length; pp++) {
+            var rng = rangeFromOffset(rows[r], spans[pp].start, spans[pp].end - spans[pp].start)
             if (rng === null) continue
-            var sc = ctxScore(rowText, positions[pp], quote.length,
+            var sc = ctxScore(rowText, spans[pp].start, spans[pp].end - spans[pp].start,
               saved !== undefined && saved !== null
                 ? { before: saved.ctxBefore || '', after: saved.ctxAfter || '' }
                 : null)
@@ -403,16 +426,12 @@ window.__ModuleLoader__.load({
       var bestScore = -1
       for (var i = 0; i < rows.length; i++) {
         var full = rows[i].textContent || ''
-        var positions = allPositionsOf(rows[i], quote)
-        for (var p = 0; p < positions.length; p++) {
-          var range = rangeFromOffset(rows[i], positions[p], quote.length)
+        var spans = allNormSpans(full, quote)
+        for (var p = 0; p < spans.length; p++) {
+          var range = rangeFromOffset(rows[i], spans[p].start, spans[p].end - spans[p].start)
           if (range === null) continue
-          var score = ctxScore(full, positions[p], quote.length, ctx)
+          var score = ctxScore(full, spans[p].start, spans[p].end - spans[p].start, ctx)
           if (score > bestScore) { bestScore = score; best = range }
-        }
-        if (ctx === null && positions.length > 0) {
-          best = rangeFromOffset(rows[i], positions[0], quote.length)
-          break
         }
       }
       if (best !== null && (ctx === null || bestScore > 0)) return best
