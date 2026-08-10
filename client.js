@@ -8,8 +8,9 @@
 //   1. 选中助手文字 → 工具条「批注」→ 写批注（可留空 = 仅标记原文）
 //   2. 保存后原文亮蓝编号 + 高亮（纯视觉，不弹窗）；跨消息/跨回合连续累积
 //   3. 输入框旁「批注 ×N」标签：悬浮可见全部内容、可逐条删除
-//   4. 回车发送：capture 阶段拦截 Enter（带 isComposing / keyCode 229 守卫）→
-//      批注块 prepend 进草稿（setDraft，不覆盖用户文字）→ composer 正常提交
+//   4. 回车发送：capture 阶段拦截 Enter（IME 守卫对齐官方 InputBar：isComposing /
+//      keyCode 229 + compositionend 后短延迟 latch）→ 批注块 prepend 进草稿
+//      （setDraft，不覆盖用户文字）→ composer 正常提交
 //   5. 用户气泡不显示批注块：MutationObserver 微任务阶段（绘制前）按最后一个
 //      「提问：」切掉批注块、贴「批注 ×N」标签（hover 可见）；1s 轮询兜底 +
 //      历史消息自动修复（用户气泡是 MessageText 单文本节点，非 markdown）
@@ -574,6 +575,34 @@ window.__ModuleLoader__.load({
       var ignoreUntil = 0
       var settleTimer = null
 
+      // ---------- IME 合成 latch（对齐官方 InputBar composingRef）----------
+      // macOS / 豆包等：compositionend 之后才会到 keydown(Enter, isComposing=false,
+      // keyCode=13)，仅查 isComposing / 229 挡不住「上屏确认 Enter」。若此时
+      // attachAndSend → setDraft，会打断合成，表现为只能打出拼音字母。
+      // 延迟清 latch 与 InputBar 一致（略放宽到 50ms，兼容第三方输入法时序）。
+      var imeComposing = false
+      var imeClearTimer = null
+      function markImeComposing() {
+        imeComposing = true
+        if (imeClearTimer !== null) {
+          clearTimeout(imeClearTimer)
+          imeClearTimer = null
+        }
+      }
+      function markImeEnded() {
+        if (imeClearTimer !== null) clearTimeout(imeClearTimer)
+        imeClearTimer = setTimeout(function () {
+          imeComposing = false
+          imeClearTimer = null
+        }, 50)
+      }
+      /** @param {KeyboardEvent} e */
+      function isImeKeyBlocked(e) {
+        return imeComposing || e.isComposing === true || e.keyCode === 229
+      }
+      document.addEventListener('compositionstart', markImeComposing, true)
+      document.addEventListener('compositionend', markImeEnded, true)
+
       // ---------- 轻提示 ----------
       var toastTimer = null
       function showToast(msg) {
@@ -751,11 +780,9 @@ window.__ModuleLoader__.load({
         // 【回车随输入框发送】在 composer 里按 Enter（且已收集批注、非输入法合成）：
         // 提交前一刻把批注块拼进草稿，composer 自己的 Enter 提交继续——模型收到
         // 批注清单 + 用户输入的问题。用户始终看不到文本被塞进去。
-        // IME 铁律：合成中的 Enter 是 keyCode 229（isComposing 在某些输入法
-        // 上屏瞬间已为 false），绝不能走拼稿——否则 setDraft 会打断合成、
-        // 中文上不了屏。旧写法查 e.nativeEvent.keyCode，但原生事件 nativeEvent
-        // 恒为 undefined，229 守卫从不生效——直接查 e.keyCode。
-        if (e.key === 'Enter' && ui.quotes.length > 0 && !e.isComposing && e.keyCode !== 229) {
+        // IME 铁律（v1.3.10 修了 nativeEvent.keyCode；v1.3.11 补 compositionend
+        // 后 Enter keyCode=13 的时序洞）：合成期 / 上屏确认 Enter 绝不能 setDraft。
+        if (e.key === 'Enter' && ui.quotes.length > 0 && !isImeKeyBlocked(e)) {
           var ta = e.target
           if (ta instanceof HTMLTextAreaElement && ta.closest && ta.closest('[data-composer-card]') !== null) {
             attachAndSend()
@@ -834,7 +861,7 @@ window.__ModuleLoader__.load({
           ta.spellcheck = false
           ta.addEventListener('input', function () { ui.noteDraft = ta.value })
           ta.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); saveAnnotation() }
+            if (e.key === 'Enter' && !e.shiftKey && !isImeKeyBlocked(e)) { e.preventDefault(); saveAnnotation() }
           })
           card.appendChild(ta)
           var row = document.createElement('div')
@@ -1576,6 +1603,9 @@ window.__ModuleLoader__.load({
         document.removeEventListener('selectionchange', onSelection)
         document.removeEventListener('pointerdown', onDocPointerDown, true)
         document.removeEventListener('keydown', onKeyDown, true)
+        document.removeEventListener('compositionstart', markImeComposing, true)
+        document.removeEventListener('compositionend', markImeEnded, true)
+        if (imeClearTimer !== null) { clearTimeout(imeClearTimer); imeClearTimer = null }
         window.removeEventListener('scroll', onLayoutChange, true)
         window.removeEventListener('resize', onLayoutChange)
         host.removeEventListener('pointerdown', onHostPointerDown)
