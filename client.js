@@ -4,20 +4,28 @@
 // 步骤）：纯 DOM 自渲染，无任何 @deepseek-ai 值导入（bundle purity gate 合规）；
 // cordis 服务经 exports.inject 的字符串名接入（sessions / conversation）。
 //
-// v1.0 · 自包含批注流（不碰 composer）：
-//   1. 选中助手回复 → 工具条「批注」→ 写批注（可留空 = 仅标记原文）
-//   2. 保存后原文亮蓝编号 + 高亮（纯视觉，不弹窗）；方位按消息 seq 锚定
-//   3. 连续收集任意多条 → 工具条出现「发送批注 (N)」
-//   4. 点开【插件自己的发送面板】：编号批注清单（可删）+ 问题输入框 + 发送
-//   5. 发送走官方对象层通道 sessions.binding(id).session.prompt（与输入框提交
-//      同一条管线）——成功即清空脚标、下次从 1 计数；错误显示在面板内
+// v1.3.x · 自包含批注流（取代 v0.9 chip 设计与 v1.0 发送面板）：
+//   1. 选中助手文字 → 工具条「批注」→ 写批注（可留空 = 仅标记原文）
+//   2. 保存后原文亮蓝编号 + 高亮（纯视觉，不弹窗）；跨消息/跨回合连续累积
+//   3. 输入框旁「批注 ×N」标签：悬浮可见全部内容、可逐条删除
+//   4. 回车发送：capture 阶段拦截 Enter（带 isComposing / keyCode 229 守卫）→
+//      批注块 prepend 进草稿（setDraft，不覆盖用户文字）→ composer 正常提交
+//   5. 用户气泡不显示批注块：MutationObserver 微任务阶段（绘制前）按最后一个
+//      「提问：」切掉批注块、贴「批注 ×N」标签（hover 可见）；1s 轮询兜底 +
+//      历史消息自动修复（用户气泡是 MessageText 单文本节点，非 markdown）
+//   6. 回复逐条对照：批注块末尾注入格式指令，模型按「Annotation N：…」逐条
+//      回应；回复渲染完成（data-streaming 移除）后把「Annotation N：」替换为
+//      可悬浮芯片（数据取最近一条带标签用户消息的 tag.__annotationItems，刷新
+//      自动重建；改 DOM 前先快照 TreeWalker 收集的文本节点再逐个替换，遍历
+//      中途 replaceChild 会让 walker 指针失效）
 //
-// v1.0 变更（用户定调"整个思路错了"后彻底重构）：
-//   - 移除全部 composer 集成：focusin 自动填充、chip（insertReference/codec）、
-//     slash source、watchInputDraft、chip 悬浮——这些依赖不可见自动触发，
-//     多轮失败且无法诊断。
-//   - 发送改为插件自管：工具栏按钮 → 自带发送面板 → 对象层 prompt，全链路
-//     可见、错误可见、成功即清空。
+// 消息格式：我批注了以下 N 处内容…\n\n1. 原文\n   批注：…\n\n
+//           请用「Annotation 1：…」…\n\n提问：
+// （分隔标记用「提问：」而非「问题：」——标题行「回答我的问题：」里也含它，
+//   气泡隐藏手术会误命中）
+//
+// 不依赖发送完成事件链：watchInputDraft 在初始化时会话未加载时会失效，仅作
+// 暂存入口；气泡装饰走 MutationObserver + 轮询。
 //
 // 判别式与 dsh-external/navbar 一致：助手行 = [data-time-hover-root] 且不含
 // user bubble（[class*="bubble"]）。
