@@ -145,14 +145,23 @@ window.__ModuleLoader__.load({
     }
 
     // ============================== 工具 ==============================
+    // 助手行判别：0810 snapshot 起助手消息行 = ChatNodeSeat 上的
+    // data-chat-flow-kind="assistant-step"（旧版 data-time-hover-root 已不再
+    // 出现在助手消息主体上，只留在用户行与 turn 尾节点）；保留旧判别式兜底
+    // 兼容回滚旧 snapshot，并排除新版 data-turn-tail 误判。
     function isAssistantRow(el) {
+      if (el.matches('[data-chat-flow-kind="assistant-step"]')) return true
       return el.hasAttribute('data-time-hover-root')
         && el.querySelector('[class*="bubble"]') === null
+        && !el.hasAttribute('data-turn-tail')
     }
 
     function assistantRowOf(node) {
       var el = (node instanceof Element) ? node : (node !== null ? node.parentElement : null)
       while (el !== null && el !== document.body) {
+        if (el.hasAttribute('data-chat-flow-kind')) {
+          return el.getAttribute('data-chat-flow-kind') === 'assistant-step' ? el : null
+        }
         if (el.hasAttribute('data-time-hover-root')) {
           return isAssistantRow(el) ? el : null
         }
@@ -162,8 +171,18 @@ window.__ModuleLoader__.load({
     }
 
     function assistantRows() {
+      var modern = document.querySelectorAll('[data-chat-flow-kind="assistant-step"]')
+      if (modern.length > 0) return Array.prototype.slice.call(modern)
       return Array.prototype.slice.call(document.querySelectorAll('[data-time-hover-root]'))
         .filter(isAssistantRow)
+    }
+
+    /** 全部消息行（用户 + 助手 + 其它节点）：新版走 data-chat-flow-kind，
+     *  旧版回退 data-time-hover-root。用于气泡装饰、批注条目回溯。 */
+    function allMessageRows() {
+      var modern = document.querySelectorAll('[data-chat-flow-kind]')
+      if (modern.length > 0) return Array.prototype.slice.call(modern)
+      return Array.prototype.slice.call(document.querySelectorAll('[data-time-hover-root]'))
     }
 
     /** 由字符偏移在元素内构造 Range（跨文本节点）。 */
@@ -1352,7 +1371,7 @@ window.__ModuleLoader__.load({
 
       /** 找到该回复行之前最近一条携带批注标签的用户消息的条目数据。 */
       function findPrevAnnotationItems(row) {
-        var rows = Array.prototype.slice.call(document.querySelectorAll('[data-time-hover-root]'))
+        var rows = allMessageRows()
         var idx = rows.indexOf(row)
         if (idx === -1) return null
         for (var i = idx - 1; i >= 0; i--) {
@@ -1373,7 +1392,7 @@ window.__ModuleLoader__.load({
 
       /** 扫描所有已结束流式输出的助手行：把「Annotation N：」替换为可悬浮芯片。 */
       function decorateAssistantAnnotations() {
-        var rows = Array.prototype.slice.call(document.querySelectorAll('[data-time-hover-root]'))
+        var rows = assistantRows()
         for (var i = 0; i < rows.length; i++) {
           var el = rows[i]
           if (!isAssistantRow(el)) continue
@@ -1489,7 +1508,7 @@ window.__ModuleLoader__.load({
        *  不依赖发送事件链：异步渲染、刷新后的历史消息都能被覆盖。 */
       function decorateAll() {
         try {
-          var rows = Array.prototype.slice.call(document.querySelectorAll('[data-time-hover-root]'))
+          var rows = allMessageRows()
           for (var i = rows.length - 1; i >= 0; i--) {
             var el = rows[i]
             if (el.hasAttribute('data-pending-steering')) continue

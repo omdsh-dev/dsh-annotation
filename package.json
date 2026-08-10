@@ -1,6 +1,6 @@
 {
   "name": "@dsh-external/dsh-annotation",
-  "version": "1.3.7",
+  "version": "1.3.8",
   "private": true,
   "type": "module",
   "description": "DSH Web 选中批注插件：选中助手回复 → 批注（可留空）→ 输入框旁「批注 ×N」标签 → 回车随消息发送；用户气泡隐藏批注块（零闪烁），模型按「Annotation N：」逐条回应，回复标签可悬浮查看批注原文",
