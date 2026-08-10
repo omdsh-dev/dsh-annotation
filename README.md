@@ -60,7 +60,7 @@ launchctl kickstart -k "gui/$(id -u)/com.dsh.web"
 
 ```sh
 dsh --profile web --dump-config | rg "id: dsh-annotation"   # 必须恰好 1 行
-curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3080/plugins/dsh-annotation/client.js   # 200
+curl -s -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:3080/plugins/@dsh-external/dsh-annotation/client.js"   # 200
 ```
 
 ## 架构要点
