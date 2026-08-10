@@ -751,8 +751,11 @@ window.__ModuleLoader__.load({
         // 【回车随输入框发送】在 composer 里按 Enter（且已收集批注、非输入法合成）：
         // 提交前一刻把批注块拼进草稿，composer 自己的 Enter 提交继续——模型收到
         // 批注清单 + 用户输入的问题。用户始终看不到文本被塞进去。
-        if (e.key === 'Enter' && ui.quotes.length > 0 && !e.isComposing
-          && (e.nativeEvent === undefined || e.nativeEvent.keyCode !== 229)) {
+        // IME 铁律：合成中的 Enter 是 keyCode 229（isComposing 在某些输入法
+        // 上屏瞬间已为 false），绝不能走拼稿——否则 setDraft 会打断合成、
+        // 中文上不了屏。旧写法查 e.nativeEvent.keyCode，但原生事件 nativeEvent
+        // 恒为 undefined，229 守卫从不生效——直接查 e.keyCode。
+        if (e.key === 'Enter' && ui.quotes.length > 0 && !e.isComposing && e.keyCode !== 229) {
           var ta = e.target
           if (ta instanceof HTMLTextAreaElement && ta.closest && ta.closest('[data-composer-card]') !== null) {
             attachAndSend()
@@ -831,7 +834,7 @@ window.__ModuleLoader__.load({
           ta.spellcheck = false
           ta.addEventListener('input', function () { ui.noteDraft = ta.value })
           ta.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); saveAnnotation() }
+            if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); saveAnnotation() }
           })
           card.appendChild(ta)
           var row = document.createElement('div')
@@ -1525,6 +1528,15 @@ window.__ModuleLoader__.load({
             if (items === null || items.length === 0) items = parseItemsFromBubble(el)
             if (!hideAnnotationBlock(el)) continue // 内容未渲染完 → 留给下轮
             attachBubbleTag(el, items)
+            // 批注已随消息真实发出（用户气泡带着批注块出现）→ 清空待发送批注集。
+            // 兜底 watchInputDraft 在初始化时会话未加载时失效的场景：若不清空，
+            // 之后每次在 composer 按 Enter 都会把批注块重新注入草稿，且 setDraft
+            // 可能打断输入法合成（中文上不了屏）。
+            if (ui.quotes.length > 0) {
+              ui.quotes = []
+              updateChip()
+              renderMarkers()
+            }
           }
           // 助手回复：把「Annotation N：」变为可悬浮的批注芯片（内容取自最近一条带批注的用户消息）。
           decorateAssistantAnnotations()
