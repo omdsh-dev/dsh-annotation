@@ -379,8 +379,23 @@ window.__ModuleLoader__.load({
                 }
               }
             }
+            // 锚点消息内的全量扫描（空白不敏感 + 上下文评分）。
+            var spansIt = allNormSpans(itText, quote)
+            var bestIt = null
+            var bestItScore = -1
+            for (var pp2 = 0; pp2 < spansIt.length; pp2++) {
+              var rngIt = rangeFromOffset(item, spansIt[pp2].start, spansIt[pp2].end - spansIt[pp2].start)
+              if (rngIt === null) continue
+              var scIt = ctxScore(itText, spansIt[pp2].start, spansIt[pp2].end - spansIt[pp2].start,
+                { before: saved.ctxBefore || '', after: saved.ctxAfter || '' })
+              if (scIt > bestItScore) { bestItScore = scIt; bestIt = rngIt }
+            }
+            if (bestIt !== null && (saved.ctxBefore === '' || bestItScore > 0)) return bestIt
+            // 严格纪律：锚点消息还在但原文匹配不上 → 直接放弃（脚标隐藏），
+            // 绝不跨消息模糊搜索——那是「跳到旧轮次」的根源。
+            return null
           }
-        } catch (_) { /* seq 锚定失败走兜底 */ }
+        } catch (_) { return null }
       }
       if (saved !== undefined && saved !== null && saved.rowHead !== '') {
         for (var r = 0; r < rows.length; r++) {
@@ -435,10 +450,6 @@ window.__ModuleLoader__.load({
         }
       }
       if (best !== null && (ctx === null || bestScore > 0)) return best
-      for (var j = 0; j < rows.length; j++) {
-        var flex = findRangeFlexible(rows[j], quote)
-        if (flex !== null) return flex
-      }
       var flow = document.querySelector('[data-chat-flow]')
       if (flow !== null) {
         var full2 = flow.textContent || ''
@@ -452,8 +463,6 @@ window.__ModuleLoader__.load({
           if (score2 > bestScore2) { bestScore2 = score2; best2 = range2 }
         }
         if (best2 !== null && (ctx === null || bestScore2 > 0)) return best2
-        var flex2 = findRangeFlexible(flow, quote)
-        if (flex2 !== null) return flex2
       }
       return null
     }
