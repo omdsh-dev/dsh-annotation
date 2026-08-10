@@ -1,4 +1,3 @@
-# Bundle patch — name must equal package.json "name" for resolution
 - insert:
     - id: dsh-annotation
-      name: '@dsh-external/dsh-annotation'
+      name: @'@dsh-external/dsh-annotation'
