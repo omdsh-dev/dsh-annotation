@@ -975,7 +975,6 @@ window.__ModuleLoader__.load({
           var block = buildBlock()
           shell.setDraft(block + '\n' + draft)
           console.log('[annotation] 批注块已拼入草稿，回车将随消息发送（' + ui.quotes.length + ' 条）')
-          showToast('已携带 ' + ui.quotes.length + ' 条批注，回车后随消息发送')
         } catch (err) {
           console.warn('[annotation] 批注拼稿失败：', err)
           showToast('批注拼稿失败，消息将不带批注发送：' + (err && err.message ? err.message : err))
