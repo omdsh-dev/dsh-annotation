@@ -17,6 +17,8 @@ export interface HighlightSurface {
    * "moved" and rendered without a pin).
    */
   paint(items: readonly AnnotationItemV1[], root: Document): readonly AnnotationItemV1[]
+  /** Drop every plugin-owned CSS highlight only (the pins are React-owned children). */
+  clearHighlights(): void
   /** Drop every plugin-owned highlight and pin. */
   clear(): void
 }
@@ -29,6 +31,13 @@ export function createHighlightSurface(
   overlay: HTMLElement,
   cssHighlights: (typeof CSS)['highlights'] | undefined,
 ): HighlightSurface {
+  const dropHighlights = (): void => {
+    if (cssHighlights !== undefined) {
+      for (const name of Array.from(cssHighlights.keys())) {
+        if (name.startsWith(`${HIGHLIGHT_STYLE}:`)) cssHighlights.delete(name)
+      }
+    }
+  }
   const paint = (items: readonly AnnotationItemV1[], root: Document): readonly AnnotationItemV1[] => {
     const located: AnnotationItemV1[] = []
     const seen = new Set<string>()
@@ -71,15 +80,11 @@ export function createHighlightSurface(
   }
 
   const clear = (): void => {
-    if (cssHighlights !== undefined) {
-      for (const name of Array.from(cssHighlights.keys())) {
-        if (name.startsWith(`${HIGHLIGHT_STYLE}:`)) cssHighlights.delete(name)
-      }
-    }
+    dropHighlights()
     overlay.replaceChildren()
   }
 
-  return { paint, clear }
+  return { paint, clearHighlights: dropHighlights, clear }
 }
 
 /** One merged repaint queue (rAF-coalesced; callers just schedule). */

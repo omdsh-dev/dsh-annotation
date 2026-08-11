@@ -72,7 +72,7 @@ export function AnnotationPanel({
       })
     }
     repaint()
-    return () => { surfaceRef.current?.clear() }
+    return () => { surfaceRef.current?.clearHighlights() }
   }, [sessionId, registry, input, draft.items])
 
   // Scroll / resize repositioning, merged per frame.
