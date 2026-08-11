@@ -386,6 +386,11 @@ window.__ModuleLoader__.load({
 			return `${HIGHLIGHT_STYLE}:${id}`;
 		}
 		function createHighlightSurface(overlay, cssHighlights) {
+			const dropHighlights = () => {
+				if (cssHighlights !== void 0) {
+					for (const name of Array.from(cssHighlights.keys())) if (name.startsWith(`dsh-annotation-2:`)) cssHighlights.delete(name);
+				}
+			};
 			const paint = (items, root) => {
 				const located = [];
 				const seen = /* @__PURE__ */ new Set();
@@ -425,13 +430,12 @@ window.__ModuleLoader__.load({
 				return located;
 			};
 			const clear = () => {
-				if (cssHighlights !== void 0) {
-					for (const name of Array.from(cssHighlights.keys())) if (name.startsWith(`dsh-annotation-2:`)) cssHighlights.delete(name);
-				}
+				dropHighlights();
 				overlay.replaceChildren();
 			};
 			return {
 				paint,
+				clearHighlights: dropHighlights,
 				clear
 			};
 		}
@@ -498,7 +502,7 @@ window.__ModuleLoader__.load({
 				};
 				repaint();
 				return () => {
-					surfaceRef.current?.clear();
+					surfaceRef.current?.clearHighlights();
 				};
 			}, [
 				sessionId,
