@@ -1,9 +1,9 @@
 {
   "name": "@dsh-external/dsh-annotation",
-  "version": "1.3.12",
+  "version": "2.0.0-internal.1",
   "private": true,
   "type": "module",
-  "description": "DSH Web 选中批注插件：选中助手回复 → 批注（可留空）→ 输入框旁「批注 ×N」标签 → 回车随消息发送；用户气泡隐藏批注块（零闪烁），模型按「Annotation N：」逐条回应，回复标签可悬浮查看批注原文",
+  "description": "DSH 内部批注插件 2.0（内部开发版）：结构化批注上下文经 DSH 原生原子提交通道随问题发送，历史呈现为原生 ContextMessage（form: notice）。仅限私有仓库/私有 PR 交付，禁止发布。",
   "main": "index.mjs",
   "exports": {
     ".": "./index.mjs",
@@ -14,17 +14,14 @@
     "index.mjs",
     "client.js",
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
-    "check": "node --check index.mjs && node --check client.js"
-  },
-  "dshClient": {
-    "inject": [
-      "@deepseek-ai/dsh-client-runtime",
-      "@deepseek-ai/dsh-client-ui-conversation"
-    ],
-    "platform": "web"
+    "build": "tsdown",
+    "check": "tsc -p tsconfig.json --noEmit && node --check index.mjs && node --check client.js",
+    "test": "vitest run",
+    "links": "node scripts/link-dsh.mjs"
   },
   "dsh": {
     "bundle": {
@@ -33,10 +30,28 @@
     "client": {
       "inject": [
         "@deepseek-ai/dsh-client-runtime",
-        "@deepseek-ai/dsh-client-ui-conversation"
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-slash",
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-locale"
       ],
       "platform": "web"
     }
+  },
+  "peerDependencies": {
+    "react": "^18.2.0"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^26.2.0",
+    "@types/react": "~18.3.1",
+    "jsdom": "^29.0.0",
+    "react": "^18.3.1",
+    "react-dom": "18.3.1",
+    "tsdown": "^0.22.2",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
   },
   "license": "MIT",
   "engines": {
