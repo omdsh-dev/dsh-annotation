@@ -1,1704 +1,939 @@
-// annotation-for-dsh 的浏览器端 half（client bundle）。
-//
-// 手写 CJS + ModuleLoader 包装（同 dsh-external navbar/greeter 模式，零构建
-// 步骤）：纯 DOM 自渲染，无任何 @deepseek-ai 值导入（bundle purity gate 合规）；
-// cordis 服务经 exports.inject 的字符串名接入（sessions / conversation）。
-//
-// v1.3.x · 自包含批注流（取代 v0.9 chip 设计与 v1.0 发送面板）：
-//   1. 选中助手文字 → 工具条「批注」→ 写批注（可留空 = 仅标记原文）
-//   2. 保存后原文亮蓝编号 + 高亮（纯视觉，不弹窗）；跨消息/跨回合连续累积
-//   3. 输入框旁「批注 ×N」标签：悬浮可见全部内容、可逐条删除
-//   4. 回车发送：capture 阶段拦截 Enter（IME 守卫对齐官方 InputBar：isComposing /
-//      keyCode 229 + compositionend 后短延迟 latch）→ 批注块 prepend 进草稿
-//      （setDraft，不覆盖用户文字）→ composer 正常提交
-//   5. 用户气泡不显示批注块：MutationObserver 微任务阶段（绘制前）按最后一个
-//      「提问：」切掉批注块、贴「批注 ×N」标签（hover 可见）；1s 轮询兜底 +
-//      历史消息自动修复（用户气泡是 MessageText 单文本节点，非 markdown）
-//   6. 回复逐条对照：批注块末尾注入格式指令，模型按「Annotation N：…」逐条
-//      回应；回复渲染完成（data-streaming 移除）后把「Annotation N：」替换为
-//      可悬浮芯片（数据取最近一条带标签用户消息的 tag.__annotationItems，刷新
-//      自动重建；改 DOM 前先快照 TreeWalker 收集的文本节点再逐个替换，遍历
-//      中途 replaceChild 会让 walker 指针失效）
-//
-// 消息格式：我批注了以下 N 处内容…\n\n1. 原文\n   批注：…\n\n
-//           请用「Annotation 1：…」…\n\n提问：
-// （分隔标记用「提问：」而非「问题：」——标题行「回答我的问题：」里也含它，
-//   气泡隐藏手术会误命中）
-//
-// 不依赖发送完成事件链：watchInputDraft 在初始化时会话未加载时会失效，仅作
-// 暂存入口；气泡装饰走 MutationObserver + 轮询。
-//
-// 判别式与 dsh-external/navbar 一致：助手行 = [data-time-hover-root] 且不含
-// user bubble（[class*="bubble"]）。
 window.__ModuleLoader__.load({
-  // 必须与 package.json "name" 完全一致，否则 client-modules 报：
-  // bundle loaded without registering "@dsh-external/dsh-annotation"
-  id: '@dsh-external/dsh-annotation',
-  factory: (require) => {
-    'use strict'
-    var module = { exports: {} }
-    var exports = module.exports
-
-    // ============================== 样式 ==============================
-    var STYLE_ID = 'annotation-for-dsh-style'
-    if (document.getElementById(STYLE_ID) === null) {
-      var style = document.createElement('style')
-      style.id = STYLE_ID
-      style.textContent = [
-        '[data-annotation-for-dsh] { all: initial; }',
-        '[data-annotation-for-dsh] * { box-sizing: border-box; }',
-        '.dsh-ann-bar { position: fixed; z-index: 1200; display: flex; align-items: center;',
-        '  gap: 2px; padding: 4px; border-radius: 12px;',
-        '  border: 1px solid var(--dsw-alias-border-inverted);',
-        '  background: var(--dsw-specific-menu, #2c2c2e);',
-        '  box-shadow: var(--dsw-shadow-lv3);',
-        '  font-family: var(--dsw-font-family, system-ui);',
-        '  animation: dsh-ann-pop .12s var(--ds-ease-in-out, ease); }',
-        '@keyframes dsh-ann-pop { from { opacity: 0; transform: translateY(3px); }',
-        '  to { opacity: 1; transform: none; } }',
-        '.dsh-ann-ghost { display: inline-flex; align-items: center; gap: 5px; height: 28px;',
-        '  padding: 0 10px; border: none; border-radius: 14px; background: transparent;',
-        '  color: var(--dsw-alias-label-primary); font-family: inherit;',
-        '  font-size: 12px; line-height: 18px; cursor: pointer; }',
-        '.dsh-ann-ghost:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }',
-        '.dsh-ann-ghost:disabled { opacity: .45; cursor: default; }',
-        '.dsh-ann-ghost svg { width: 14px; height: 14px; }',
-        '.dsh-ann-action { display: inline-flex; align-items: center; gap: 5px; height: 28px;',
-        '  padding: 0 12px; border: none; border-radius: 14px;',
-        '  background: var(--dsw-alias-button-primary-fill);',
-        '  color: var(--dsw-alias-label-primary-foreground);',
-        '  font-family: inherit; font-size: 12px; line-height: 18px; cursor: pointer; }',
-        '.dsh-ann-action:hover:not(:disabled) { background: var(--dsw-alias-button-primary-hover); }',
-        '.dsh-ann-action:disabled { opacity: .4; cursor: default; }',
-        '.dsh-ann-action svg { width: 14px; height: 14px; }',
-        '.dsh-ann-icon { display: inline-flex; align-items: center; justify-content: center;',
-        '  width: 28px; height: 28px; padding: 0; border: none; border-radius: 28px;',
-        '  background: transparent; color: var(--dsw-alias-label-tertiary); cursor: pointer; }',
-        '.dsh-ann-icon:hover { background: var(--dsw-alias-interactive-bg-hover);',
-        '  color: var(--dsw-alias-label-secondary); }',
-        '.dsh-ann-icon svg { width: 14px; height: 14px; }',
-        '.dsh-ann-card { position: fixed; z-index: 1201; width: 400px;',
-        '  max-width: calc(100vw - 16px); padding: 12px; border-radius: 12px;',
-        '  border: 1px solid var(--dsw-alias-border-inverted);',
-        '  background: var(--dsw-specific-menu, #2c2c2e);',
-        '  box-shadow: var(--dsw-shadow-lv3);',
-        '  font-family: var(--dsw-font-family, system-ui);',
-        '  animation: dsh-ann-pop .12s var(--ds-ease-in-out, ease); }',
-        '.dsh-ann-card-head { display: flex; align-items: center; justify-content: space-between;',
-        '  margin-bottom: 8px; }',
-        '.dsh-ann-card-title { font-size: 13px; font-weight: 600;',
-        '  color: var(--dsw-alias-label-primary); }',
-        '.dsh-ann-quote { font-size: 12px; line-height: 1.55;',
-        '  color: var(--dsw-alias-label-tertiary);',
-        '  border-left: 2px solid var(--dsw-alias-border-inverted);',
-        '  background: var(--dsw-alias-bg-layer-1);',
-        '  border-radius: 0 8px 8px 0; padding: 6px 10px; margin-bottom: 8px;',
-        '  max-height: 72px; overflow: hidden; word-break: break-word;',
-        '  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }',
-        '.dsh-ann-quotes { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px;',
-        '  max-height: 150px; overflow-y: auto; }',
-        '.dsh-ann-qitem { display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px;',
-        '  border-radius: 8px; background: var(--dsw-alias-bg-layer-1); }',
-        '.dsh-ann-qnum { flex: none; display: inline-flex; align-items: center; justify-content: center;',
-        '  width: 16px; height: 16px; margin-top: 1px; border-radius: 8px;',
-        '  background: var(--dsw-alias-text-accent, #4c9aff); color: #fff;',
-        '  font-size: 10px; font-weight: 700; }',
-        '.dsh-ann-qbody { flex: 1; min-width: 0; }',
-        '.dsh-ann-qtext { font-size: 12px; line-height: 1.5;',
-        '  color: var(--dsw-alias-label-tertiary); max-height: 36px; overflow: hidden;',
-        '  word-break: break-word; display: -webkit-box; -webkit-line-clamp: 2;',
-        '  -webkit-box-orient: vertical; }',
-        '.dsh-ann-qnote { font-size: 11px; line-height: 1.5; margin-top: 2px;',
-        '  color: var(--dsw-alias-label-secondary); max-height: 34px; overflow: hidden;',
-        '  word-break: break-word; white-space: pre-wrap; display: -webkit-box;',
-        '  -webkit-line-clamp: 2; -webkit-box-orient: vertical; }',
-        '.dsh-ann-qdel { flex: none; display: inline-flex; align-items: center; justify-content: center;',
-        '  width: 18px; height: 18px; padding: 0; border: none; border-radius: 9px;',
-        '  background: transparent; color: var(--dsw-alias-label-tertiary); cursor: pointer; }',
-        '.dsh-ann-qdel:hover { background: var(--dsw-alias-interactive-bg-hover);',
-        '  color: var(--dsw-alias-label-secondary); }',
-        '.dsh-ann-qdel svg { width: 10px; height: 10px; }',
-        '.dsh-ann-input { width: 100%; min-height: 64px; padding: 8px 10px;',
-        '  border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px;',
-        '  background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary);',
-        '  font-family: inherit; font-size: 13px; line-height: 20px;',
-        '  outline: none; resize: vertical; }',
-        '.dsh-ann-input:focus { border-color: var(--dsw-alias-text-accent, #4c9aff); }',
-        '.dsh-ann-input::placeholder { color: var(--dsw-alias-label-dimmed); }',
-        '.dsh-ann-row { display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; }',
-        '.dsh-ann-cancel { display: inline-flex; align-items: center; height: 28px; padding: 0 12px;',
-        '  border: 1px solid var(--dsw-alias-border-l2); border-radius: 14px;',
-        '  background: transparent; color: var(--dsw-alias-label-primary);',
-        '  font-family: inherit; font-size: 12px; cursor: pointer; }',
-        '.dsh-ann-cancel:hover { background: var(--dsw-alias-interactive-bg-hover); }',
-        '.dsh-ann-error { color: var(--dsw-alias-state-error-primary, #ff7a7a);',
-        '  font-size: 12px; margin-top: 8px; word-break: break-word; }',
-        '.dsh-ann-hl { position: fixed; z-index: 900; background: rgba(255, 195, 0, .15);',
-        '  border-radius: 2px; pointer-events: none; }',
-        '.dsh-ann-num { position: fixed; z-index: 940; display: inline-flex; align-items: center;',
-        '  justify-content: center; min-width: 16px; height: 16px; padding: 0 4px;',
-        '  border-radius: 8px; border: 1px solid rgba(255, 255, 255, .3);',
-        '  background: var(--dsw-alias-text-accent, #4c9aff); color: #fff;',
-        '  font-family: var(--dsw-font-family, system-ui); font-size: 10px; font-weight: 700;',
-        '  box-shadow: 0 1px 4px rgba(0,0,0,.35); pointer-events: auto; cursor: pointer; }',
-        '.dsh-ann-num:hover { filter: brightness(1.15); }',
-      ].join('\n')
-      document.head.appendChild(style)
-    }
-
-    // ============================== 工具 ==============================
-    // 助手行判别：0810 snapshot 起助手消息行 = ChatNodeSeat 上的
-    // data-chat-flow-kind="assistant-step"（旧版 data-time-hover-root 已不再
-    // 出现在助手消息主体上，只留在用户行与 turn 尾节点）；保留旧判别式兜底
-    // 兼容回滚旧 snapshot，并排除新版 data-turn-tail 误判。
-    function isAssistantRow(el) {
-      if (el.matches('[data-chat-flow-kind="assistant-step"]')) return true
-      return el.hasAttribute('data-time-hover-root')
-        && el.querySelector('[class*="bubble"]') === null
-        && !el.hasAttribute('data-turn-tail')
-    }
-
-    function assistantRowOf(node) {
-      var el = (node instanceof Element) ? node : (node !== null ? node.parentElement : null)
-      while (el !== null && el !== document.body) {
-        if (el.hasAttribute('data-chat-flow-kind')) {
-          return el.getAttribute('data-chat-flow-kind') === 'assistant-step' ? el : null
-        }
-        if (el.hasAttribute('data-time-hover-root')) {
-          return isAssistantRow(el) ? el : null
-        }
-        el = el.parentElement
-      }
-      return null
-    }
-
-    function assistantRows() {
-      var modern = document.querySelectorAll('[data-chat-flow-kind="assistant-step"]')
-      if (modern.length > 0) return Array.prototype.slice.call(modern)
-      return Array.prototype.slice.call(document.querySelectorAll('[data-time-hover-root]'))
-        .filter(isAssistantRow)
-    }
-
-    /** 全部消息行（用户 + 助手 + 其它节点）：新版走 data-chat-flow-kind，
-     *  旧版回退 data-time-hover-root。用于气泡装饰、批注条目回溯。 */
-    function allMessageRows() {
-      var modern = document.querySelectorAll('[data-chat-flow-kind]')
-      if (modern.length > 0) return Array.prototype.slice.call(modern)
-      return Array.prototype.slice.call(document.querySelectorAll('[data-time-hover-root]'))
-    }
-
-    /** 由字符偏移在元素内构造 Range（跨文本节点）。 */
-    function rangeFromOffset(el, offset, length) {
-      var nodes = []
-      var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
-      var n
-      while ((n = walker.nextNode()) !== null) nodes.push(n)
-      var pos = 0
-      for (var i = 0; i < nodes.length; i++) {
-        var len = (nodes[i].nodeValue || '').length
-        if (offset < pos + len) {
-          var range = document.createRange()
-          range.setStart(nodes[i], offset - pos)
-          var remain = length
-          var j = i
-          var inner = offset - pos
-          while (remain > 0) {
-            var l = (nodes[j].nodeValue || '').length
-            var take = Math.min(remain, l - inner)
-            remain -= take
-            if (remain === 0) { range.setEnd(nodes[j], inner + take); break }
-            j++
-            inner = 0
-          }
-          return range
-        }
-        pos += len
-      }
-      return null
-    }
-
-    function findRangeIn(el, quote) {
-      var full = ''
-      var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
-      var n
-      while ((n = walker.nextNode()) !== null) full += n.nodeValue || ''
-      var start = full.indexOf(quote)
-      if (start === -1) return null
-      return rangeFromOffset(el, start, quote.length)
-    }
-
-    /** 空白完全剥离匹配：返回 quote 在 full 中的所有原始偏移区间 [{start,end}]。
-     *  解决选区文本跨块级元素（GenUI 表格单元格等）带出 \n、而 DOM textContent
-     *  无此空白导致的匹配失败（此前会掉进宽松匹配命中旧轮次）。 */
-    function allNormSpans(full, quote) {
-      var nq = quote.replace(/\s+/g, '')
-      if (nq === '') return []
-      var nf = ''
-      var map = []
-      for (var i = 0; i < full.length; i++) {
-        if (!/\s/.test(full[i])) { nf += full[i]; map.push(i) }
-      }
-      var out = []
-      var idx = nf.indexOf(nq)
-      while (idx !== -1) {
-        out.push({ start: map[idx], end: map[idx + nq.length - 1] + 1 })
-        idx = nf.indexOf(nq, idx + 1)
-      }
-      return out
-    }
-
-    function findNormSpan(full, quote) {
-      var spans = allNormSpans(full, quote)
-      return spans.length > 0 ? spans[0] : null
-    }
-
-    /** 批注芯片差异变体：选区文本里芯片是「Annotation N」（无冒号），而消息行
-     *  渲染文本可能是「Annotation N：」（React 重渲染后冒号恢复）——匹配失败时
-     *  用变体重试，抹平该差异。 */
-    function quoteVariants(quote) {
-      var out = [quote]
-      var re = /Annotation[\s\u200b\u200c\u200d\u00ad]*(\d+)/gi
-      var m
-      while ((m = re.exec(quote)) !== null) {
-        out.push(quote.slice(0, m.index) + 'Annotation ' + m[1] + '：' + quote.slice(m.index + m[0].length))
-      }
-      return out
-    }
-
-    function allPositionsOf(el, quote) {
-      var full = el.textContent || ''
-      var out = []
-      var idx = full.indexOf(quote)
-      while (idx !== -1) {
-        out.push(idx)
-        idx = full.indexOf(quote, idx + 1)
-      }
-      return out
-    }
-
-    function ctxScore(full, pos, len, ctx) {
-      if (ctx === null) return 0
-      var before = full.slice(Math.max(0, pos - 24), pos)
-      var after = full.slice(pos + len, pos + len + 24)
-      var s = 0
-      for (var i = 0; i < Math.min(before.length, ctx.before.length); i++) {
-        if (before[i] === ctx.before[i]) s++
-      }
-      for (var j = 0; j < Math.min(after.length, ctx.after.length); j++) {
-        if (after[j] === ctx.after[j]) s++
-      }
-      return s
-    }
-
-    /** 由 Range 起点算出它在元素文本内的绝对字符偏移（真实位置）。 */
-    function offsetOfRangeInRow(row, range) {
-      try {
-        var walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT)
-        var n
-        var pos = 0
-        while ((n = walker.nextNode()) !== null) {
-          var len = (n.nodeValue || '').length
-          if (n === range.startContainer) return pos + range.startOffset
-          pos += len
-        }
-      } catch (_) { /* fallthrough */ }
-      return -1
-    }
-
-    /** 宽松定位：token 式匹配，双向容忍空白差异。 */
-    function findRangeFlexible(el, quote) {
-      var qNorm = quote.replace(/\s+/g, ' ').trim()
-      if (qNorm === '') return null
-      var tokens = qNorm.split(' ').filter(function (t) { return t !== '' })
-      if (tokens.length === 0) return null
-      var nodes = []
-      var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
-      var n
-      while ((n = walker.nextNode()) !== null) nodes.push(n)
-      var stream = []
-      for (var i = 0; i < nodes.length; i++) {
-        var text = nodes[i].nodeValue || ''
-        for (var k = 0; k < text.length; k++) stream.push({ node: nodes[i], offset: k, ch: text[k] })
-      }
-      var t = 0
-      var ti = 0
-      var startNode = null
-      var startOff = 0
-      var endNode = null
-      var endOff = -1
-      var seenGap = false
-      for (var s = 0; s < stream.length && t < tokens.length; s++) {
-        var ch = stream[s].ch
-        var isWs = /\s/.test(ch)
-        if (isWs) {
-          if (ti === 0) seenGap = true
-          continue
-        }
-        if (ti === 0) {
-          if (t > 0 && !seenGap) seenGap = true
-          if (ch === tokens[t][0]) {
-            if (t === 0) { startNode = stream[s].node; startOff = stream[s].offset }
-            ti = 1
-          } else {
-            seenGap = true
-            continue
-          }
-          if (tokens[t].length === 1) {
-            endNode = stream[s].node
-            endOff = stream[s].offset
-            t++
-            ti = 0
-            seenGap = false
-          }
-          continue
-        }
-        if (ch === tokens[t][ti]) {
-          ti++
-          if (ti === tokens[t].length) {
-            endNode = stream[s].node
-            endOff = stream[s].offset
-            t++
-            ti = 0
-            seenGap = false
-          }
-        } else {
-          ti = 0
-          if (ch === tokens[t][0]) {
-            if (t === 0) { startNode = stream[s].node; startOff = stream[s].offset }
-            ti = 1
-            if (tokens[t].length === 1) {
-              endNode = stream[s].node
-              endOff = stream[s].offset
-              t++
-              ti = 0
-              seenGap = false
-            }
-          }
-        }
-      }
-      if (t === tokens.length && startNode !== null) {
-        var range = document.createRange()
-        range.setStart(startNode, startOff)
-        range.setEnd(endNode, endOff + 1)
-        return range
-      }
-      return null
-    }
-
-    /** 定位批注的 Range：消息 seq 锚定优先，空白不敏感重搜兜底。 */
-    function locateQuote(quote, saved) {
-      if (saved !== undefined && saved !== null && saved.range && saved.range.startContainer) {
-        try {
-          if (saved.range.startContainer.isConnected && saved.range.endContainer.isConnected) {
-            var t = saved.range.toString()
-            if (t.replace(/\s+/g, '') === quote.replace(/\s+/g, '')) {
-              return saved.range
-            }
-          }
-        } catch (_) { /* range 已失效 */ }
-      }
-      var rows = assistantRows()
-      if (saved !== undefined && saved !== null && saved.seqKey !== '') {
-        try {
-          var item = document.querySelector('[data-chat-anchor-key="' + saved.seqKey + '"]')
-          if (item !== null) {
-            var itText = item.textContent || ''
-            if (saved.textOffset >= 0) {
-              var sp0 = findNormSpan(itText, quote)
-              if (sp0 !== null && Math.abs(sp0.start - saved.textOffset) <= 2) {
-                var itRange = rangeFromOffset(item, sp0.start, sp0.end - sp0.start)
-                if (itRange !== null) return itRange
-              }
-            }
-            if (saved.ctxBefore !== '') {
-              var itIdx = itText.indexOf(saved.ctxBefore)
-              if (itIdx !== -1) {
-                var itNear = itIdx + saved.ctxBefore.length
-                var sp1 = findNormSpan(itText.slice(itNear), quote)
-                if (sp1 !== null) {
-                  var itRange2 = rangeFromOffset(item, itNear + sp1.start, sp1.end - sp1.start)
-                  if (itRange2 !== null) return itRange2
-                }
-              }
-            }
-            // 锚点消息内的全量扫描（空白不敏感 + 上下文评分）。
-            var spansIt = allNormSpans(itText, quote)
-            var bestIt = null
-            var bestItScore = -1
-            for (var pp2 = 0; pp2 < spansIt.length; pp2++) {
-              var rngIt = rangeFromOffset(item, spansIt[pp2].start, spansIt[pp2].end - spansIt[pp2].start)
-              if (rngIt === null) continue
-              var scIt = ctxScore(itText, spansIt[pp2].start, spansIt[pp2].end - spansIt[pp2].start,
-                { before: saved.ctxBefore || '', after: saved.ctxAfter || '' })
-              if (scIt > bestItScore) { bestItScore = scIt; bestIt = rngIt }
-            }
-            if (bestIt !== null && (saved.ctxBefore === '' || bestItScore > 0)) return bestIt
-            // 锚点消息还在但原文匹配不上：先试批注芯片差异变体（「Annotation N」
-            // vs「Annotation N：」）在**同一条消息内**宽松重定位——绝不跨消息
-            // 模糊搜索（那是「跳到旧轮次」的根源，v1.3.6 纪律）。
-            var variants = quoteVariants(quote)
-            for (var vi = 0; vi < variants.length; vi++) {
-              var vsp = allNormSpans(itText, variants[vi])
-              for (var vj = 0; vj < vsp.length; vj++) {
-                var vrng = rangeFromOffset(item, vsp[vj].start, vsp[vj].end - vsp[vj].start)
-                if (vrng !== null) return vrng
-              }
-              var vflex = findRangeFlexible(item, variants[vi])
-              if (vflex !== null) return vflex
-            }
-            // 同消息内确实定位不到 → 放弃（脚标隐藏）。
-            return null
-          }
-        } catch (_) { return null }
-      }
-      if (saved !== undefined && saved !== null && saved.rowHead !== '') {
-        for (var r = 0; r < rows.length; r++) {
-          var rowText = rows[r].textContent || ''
-          if (rowText.slice(0, 24) !== saved.rowHead) continue
-          if (saved.textOffset >= 0) {
-            var spR = findNormSpan(rowText, quote)
-            if (spR !== null && Math.abs(spR.start - saved.textOffset) <= 2) {
-              var range = rangeFromOffset(rows[r], spR.start, spR.end - spR.start)
-              if (range !== null) return range
-            }
-          }
-          if (saved.ctxBefore !== '') {
-            var bIdx = rowText.indexOf(saved.ctxBefore)
-            if (bIdx !== -1) {
-              var near = bIdx + saved.ctxBefore.length
-              var spR2 = findNormSpan(rowText.slice(near), quote)
-              if (spR2 !== null) {
-                var range2 = rangeFromOffset(rows[r], near + spR2.start, spR2.end - spR2.start)
-                if (range2 !== null) return range2
-              }
-            }
-          }
-          var spans = allNormSpans(rowText, quote)
-          var bestRow = null
-          var bestRowScore = -1
-          for (var pp = 0; pp < spans.length; pp++) {
-            var rng = rangeFromOffset(rows[r], spans[pp].start, spans[pp].end - spans[pp].start)
-            if (rng === null) continue
-            var sc = ctxScore(rowText, spans[pp].start, spans[pp].end - spans[pp].start,
-              saved !== undefined && saved !== null
-                ? { before: saved.ctxBefore || '', after: saved.ctxAfter || '' }
-                : null)
-            if (sc > bestRowScore) { bestRowScore = sc; bestRow = rng }
-          }
-          if (bestRow !== null) return bestRow
-        }
-      }
-      var ctx = saved !== undefined && saved !== null
-        ? { before: saved.ctxBefore || '', after: saved.ctxAfter || '' }
-        : null
-      var best = null
-      var bestScore = -1
-      for (var i = 0; i < rows.length; i++) {
-        var full = rows[i].textContent || ''
-        var spans = allNormSpans(full, quote)
-        for (var p = 0; p < spans.length; p++) {
-          var range = rangeFromOffset(rows[i], spans[p].start, spans[p].end - spans[p].start)
-          if (range === null) continue
-          var score = ctxScore(full, spans[p].start, spans[p].end - spans[p].start, ctx)
-          if (score > bestScore) { bestScore = score; best = range }
-        }
-      }
-      if (best !== null && (ctx === null || bestScore > 0)) return best
-      var flow = document.querySelector('[data-chat-flow]')
-      if (flow !== null) {
-        var full2 = flow.textContent || ''
-        var positions2 = allPositionsOf(flow, quote)
-        var best2 = null
-        var bestScore2 = -1
-        for (var q2 = 0; q2 < positions2.length; q2++) {
-          var range2 = rangeFromOffset(flow, positions2[q2], quote.length)
-          if (range2 === null) continue
-          var score2 = ctxScore(full2, positions2[q2], quote.length, ctx)
-          if (score2 > bestScore2) { bestScore2 = score2; best2 = range2 }
-        }
-        if (best2 !== null && (ctx === null || bestScore2 > 0)) return best2
-      }
-      return null
-    }
-
-    function truncate(s, n) {
-      return s.length > n ? s.slice(0, n) + '…' : s
-    }
-
-    function placeAbove(rect, height) {
-      var w = 400
-      var left = rect.left + rect.width / 2 - w / 2
-      left = Math.max(8, Math.min(left, window.innerWidth - w - 8))
-      var top = rect.top - height - 8
-      if (top < 8) top = Math.min(rect.bottom + 8, window.innerHeight - height - 8)
-      return { left: Math.round(left), top: Math.round(Math.max(8, top)) }
-    }
-
-    function svg(paths, viewBox) {
-      var s = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-      s.setAttribute('viewBox', viewBox)
-      s.setAttribute('fill', 'none')
-      s.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
-      for (var i = 0; i < paths.length; i++) {
-        var p = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-        p.setAttribute('d', paths[i])
-        p.setAttribute('fill', 'currentColor')
-        s.appendChild(p)
-      }
-      return s
-    }
-    var ICONS = {
-      plus: function () {
-        return svg(['M8.64453 1.5V7.34961H14.5V8.65039H8.64453V14.5H7.34473V8.65039H1.5V7.34961H7.34473V1.5H8.64453Z'], '0 0 16 16')
-      },
-      check: function () {
-        return svg([
-          'M15.0498 3.92579L8.49512 12.3818C8.25774 12.6881 8.04517 12.9645 7.84668 13.1689C7.63957 13.3823 7.38732 13.5841 7.04492 13.6719C6.86373 13.7183 6.6757 13.7346 6.48926 13.7197C6.13666 13.6915 5.8528 13.5355 5.6123 13.3604C5.38201 13.1926 5.12573 12.9567 4.83984 12.6953L1.03125 9.21289L1.96875 8.1875L5.77734 11.6699C6.08684 11.9529 6.27773 12.1249 6.43066 12.2363C6.50183 12.2882 6.54699 12.3135 6.57324 12.3252C6.58525 12.3305 6.59269 12.3322 6.5957 12.333C6.59802 12.3336 6.59961 12.334 6.59961 12.334C6.63317 12.3367 6.66758 12.3335 6.7002 12.3252C6.7002 12.3252 6.70211 12.3251 6.7041 12.3242C6.70698 12.3229 6.71348 12.319 6.72461 12.3115C6.74849 12.2956 6.78843 12.2642 6.84961 12.2012C6.98138 12.0654 7.13957 11.8628 7.39648 11.5313L13.9502 3.07422L15.0498 3.92579Z',
-        ], '0 0 16 16')
-      },
-      close: function () {
-        return svg([
-          'M14.1168 13.197L13.197 14.1167L1.8833 2.80303L2.80309 1.88324L14.1168 13.197Z',
-          'M13.197 1.88326L14.1168 2.80305L2.80309 14.1168L1.8833 13.197L13.197 1.88326Z',
-        ], '0 0 16 16')
-      },
-      send: function () {
-        return svg([
-          'M8.3125 0.981587C8.66767 1.0545 8.97902 1.20558 9.2627 1.43374C9.48724 1.61438 9.73029 1.85933 9.97949 2.10854L14.707 6.83608L13.293 8.25014L9 3.95717V15.0431H7V3.95717L2.70703 8.25014L1.29297 6.83608L6.02051 2.10854C6.26971 1.85933 6.51277 1.61438 6.7373 1.43374C6.97662 1.24126 7.28445 1.04542 7.6875 0.981587C7.8973 0.94841 8.1031 0.956564 8.3125 0.981587Z',
-        ], '0 0 16 16')
-      },
-      trash: function () {
-        return svg([
-          'M14.4782 4.84067L14.2138 10.1152C14.1102 12.1872 14.067 13.0115 13.3866 13.9607C13.1044 14.3546 12.7498 14.6912 12.3424 14.9535C11.8239 15.2872 11.2415 15.4316 10.5585 15.4998C9.88727 15.5668 9.04946 15.5656 7.99998 15.5656C6.95051 15.5656 6.1127 15.5668 5.44142 15.4998C4.75851 15.4316 4.17602 15.2872 3.65753 14.9535C3.25012 14.6912 2.89559 14.3546 2.61332 13.9607C1.93296 13.0115 1.88979 12.1872 1.78619 10.1152L1.52179 4.84067L2.89006 4.77277L3.15343 10.0463C3.26221 12.2218 3.32452 12.6015 3.72646 13.1624C3.90825 13.4161 4.13686 13.6334 4.39927 13.8023C4.66204 13.9714 5.00263 14.0792 5.57825 14.1367C6.16562 14.1953 6.92298 14.1963 7.99998 14.1963C9.07699 14.1963 9.83434 14.1953 10.4217 14.1367C10.9973 14.0792 11.3379 13.9714 11.6007 13.8023C11.8631 13.6334 12.0917 13.4161 12.2735 13.1624C12.6755 12.6015 12.7378 12.2218 12.8465 10.0463L13.1099 4.77277L14.4782 4.84067ZM5.43011 6.22849H6.7994V11.3909H5.43011V6.22849ZM9.20056 6.22849H10.5699V11.3909H9.20056V6.22849ZM8.53597 0.434431C9.17976 0.434431 9.6522 0.426926 10.0966 0.571258C10.2357 0.616451 10.3717 0.672554 10.502 0.738948C10.9182 0.951107 11.2464 1.29099 11.7015 1.74612L12.4978 2.54136H15.3742V3.91169H0.625732V2.54136H3.50218L4.29845 1.74612C4.75358 1.29099 5.08174 0.951107 5.49801 0.738948C5.62831 0.672554 5.76425 0.616451 5.90334 0.571258C6.34776 0.426926 6.82021 0.434431 7.46399 0.434431H8.53597ZM7.46399 1.80476C6.73208 1.80476 6.51641 1.81187 6.32617 1.87369C6.25545 1.89667 6.18668 1.92533 6.12041 1.95907C5.96398 2.03878 5.82348 2.16253 5.44142 2.54136H10.5585C10.1765 2.16253 10.036 2.03878 9.87955 1.95907C9.81329 1.92533 9.74452 1.89667 9.6738 1.87369C9.48356 1.81187 9.26789 1.80476 8.53597 1.80476H7.46399Z',
-        ], '0 0 16 16')
-      },
-    }
-
-    // ============================== 插件主体 ==============================
-    function apply(ctx) {
-      var sessions = ctx.sessions
-
-      var host = document.createElement('div')
-      host.setAttribute('data-annotation-for-dsh', '')
-      document.body.appendChild(host)
-      var overlay = document.createElement('div')
-      overlay.setAttribute('data-annotation-overlay', '')
-      document.body.appendChild(overlay)
-
-      var ui = {
-        mode: 'closed',      // closed | actions | editing | composing
-        editingId: null,     // 非空 = 正在编辑该 id 的已有批注（点角标进入）
-        quote: '',
-        quotes: [],          // [{ id, text, note, range, seqKey, rowHead, textOffset, ctxBefore, ctxAfter }]
-        noteDraft: '',
-        pos: { left: 0, top: 0 },
-        error: null,
-        busy: false,
-        lastKey: '',
-        pendingAnchor: null,
-        el: null,
-      }
-
-      var ignoreUntil = 0
-      var settleTimer = null
-
-      // ---------- IME 合成 latch（对齐官方 InputBar composingRef）----------
-      // macOS / 豆包等：compositionend 之后才会到 keydown(Enter, isComposing=false,
-      // keyCode=13)，仅查 isComposing / 229 挡不住「上屏确认 Enter」。若此时
-      // attachAndSend → setDraft，会打断合成，表现为只能打出拼音字母。
-      // 延迟清 latch 与 InputBar 一致（略放宽到 50ms，兼容第三方输入法时序）。
-      var imeComposing = false
-      var imeClearTimer = null
-      function markImeComposing() {
-        imeComposing = true
-        if (imeClearTimer !== null) {
-          clearTimeout(imeClearTimer)
-          imeClearTimer = null
-        }
-      }
-      function markImeEnded() {
-        if (imeClearTimer !== null) clearTimeout(imeClearTimer)
-        imeClearTimer = setTimeout(function () {
-          imeComposing = false
-          imeClearTimer = null
-        }, 50)
-      }
-      /** @param {KeyboardEvent} e */
-      function isImeKeyBlocked(e) {
-        return imeComposing || e.isComposing === true || e.keyCode === 229
-      }
-      document.addEventListener('compositionstart', markImeComposing, true)
-      document.addEventListener('compositionend', markImeEnded, true)
-
-      // ---------- 轻提示 ----------
-      var toastTimer = null
-      function showToast(msg) {
-        try {
-          var old = document.querySelector('[data-annotation-toast]')
-          if (old !== null) old.remove()
-          var el = document.createElement('div')
-          el.setAttribute('data-annotation-toast', '')
-          el.textContent = msg
-          el.style.cssText = 'position:fixed;z-index:1300;left:50%;bottom:88px;transform:translateX(-50%);max-width:min(420px,calc(100vw - 24px));padding:8px 14px;border-radius:10px;background:var(--dsw-specific-menu,#2c2c2e);border:1px solid var(--dsw-alias-border-inverted);box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family,system-ui);font-size:12px;pointer-events:none;'
-          document.body.appendChild(el)
-          if (toastTimer !== null) clearTimeout(toastTimer)
-          toastTimer = setTimeout(function () {
-            toastTimer = null
-            if (el.parentNode) el.parentNode.removeChild(el)
-          }, 3000)
-        } catch (_) { /* toast 失败忽略 */ }
-      }
-
-      // ---------- 选区监听 ----------
-      function selectionKey(sel) {
-        if (sel === null || sel.rangeCount === 0) return ''
-        var r = sel.getRangeAt(0)
-        return String(r.startContainer === r.endContainer ? 1 : 0)
-          + ':' + r.startOffset + ':' + r.endOffset + ':' + sel.toString().length
-      }
-
-      function onSelection() {
-        if (ui.mode !== 'closed' && host.childNodes.length === 0) {
-          ui.mode = 'closed'
-          ui.lastKey = ''
-        }
-        if (ui.mode === 'editing' || ui.mode === 'composing' || ignoreUntil > Date.now()) return
-        var sel = window.getSelection()
-        if (sel === null || sel.isCollapsed || sel.rangeCount === 0) {
-          clearSettle()
-          return
-        }
-        var range = sel.getRangeAt(0)
-        var anc = range.commonAncestorContainer
-        var ancEl = anc instanceof Element ? anc : (anc && anc.parentElement)
-        if (ancEl !== null && ancEl.closest) {
-          if (ancEl.closest('[data-annotation-for-dsh]') || ancEl.closest('[data-annotation-overlay]')
-            || ancEl.closest('[data-composer-card]') || ancEl.closest('[data-input-scroll]')) {
-            clearSettle()
-            return
-          }
-        }
-        if (host.contains(anc) || overlay.contains(anc)) {
-          clearSettle()
-          return
-        }
-        var text = sel.toString().trim()
-        if (text.length === 0) { clearSettle(); return }
-        var key = selectionKey(sel)
-        if (ui.mode === 'actions' && key === ui.lastKey) { clearSettle(); return }
-        var rootEl = assistantRowOf(range.commonAncestorContainer)
-        if (rootEl === null) { clearSettle(); closeToolbar(); return }
-        clearSettle()
-        settleTimer = setTimeout(function () {
-          settleTimer = null
-          if (ui.mode === 'editing' || ui.mode === 'composing') return
-          var s = window.getSelection()
-          if (s === null || s.isCollapsed || selectionKey(s) !== key) return
-          var r = s.getRangeAt(0)
-          if (assistantRowOf(r.commonAncestorContainer) === null) return
-          var rect = r.getBoundingClientRect()
-          if (rect.width === 0 || rect.height === 0) return
-          var p = placeAbove(rect, 40)
-          if (ui.mode === 'actions' && ui.quote === text) {
-            ui.lastKey = key
-            ui.pos = p
-            if (ui.el !== null && ui.el.style) {
-              ui.el.style.left = p.left + 'px'
-              ui.el.style.top = p.top + 'px'
-            }
-            return
-          }
-          ui.lastKey = key
-          ui.mode = 'actions'
-          ui.quote = text
-          ui.error = null
-          ui.pos = p
-          render()
-        }, 250)
-      }
-      document.addEventListener('selectionchange', onSelection)
-
-      function clearSettle() {
-        if (settleTimer !== null) { clearTimeout(settleTimer); settleTimer = null }
-      }
-
-      function onHostPointerDown() { ignoreUntil = Date.now() + 80 }
-      host.addEventListener('pointerdown', onHostPointerDown)
-
-      function onDocPointerDown(e) {
-        if (ui.mode === 'actions' && !host.contains(e.target) && !overlay.contains(e.target)) {
-          closeToolbar()
-        }
-      }
-      document.addEventListener('pointerdown', onDocPointerDown, true)
-
-      var anchorRaf = false
-      var lostSince = 0
-      var ANCHOR_LOST_MS = 1000
-      function onLayoutChange() {
-        if (anchorRaf) return
-        anchorRaf = true
-        requestAnimationFrame(function () {
-          anchorRaf = false
-          if (ui.quotes.length > 0) renderMarkers()
-          if (ui.mode !== 'actions' || ui.quote === '') return
-          var rect = null
-          var sel = window.getSelection()
-          if (sel !== null && !sel.isCollapsed && sel.rangeCount > 0) {
-            var live = sel.getRangeAt(0)
-            if (assistantRowOf(live.commonAncestorContainer) !== null
-              && sel.toString().trim() === ui.quote) {
-              rect = live.getBoundingClientRect()
-            }
-          }
-          if (rect === null) {
-            var range = locateQuote(ui.quote)
-            if (range !== null) rect = range.getBoundingClientRect()
-          }
-          if (rect === null || rect.width === 0 || rect.height === 0) {
-            if (lostSince === 0) lostSince = Date.now()
-            if (Date.now() - lostSince > ANCHOR_LOST_MS) { lostSince = 0; closeToolbar() }
-            return
-          }
-          lostSince = 0
-          var p = placeAbove(rect, 40)
-          if (Math.abs(p.left - ui.pos.left) + Math.abs(p.top - ui.pos.top) > 2) {
-            ui.pos = p
-            if (ui.el !== null && ui.el.style) {
-              ui.el.style.left = p.left + 'px'
-              ui.el.style.top = p.top + 'px'
-            } else {
-              render()
-            }
-          }
-        })
-      }
-      window.addEventListener('scroll', onLayoutChange, true)
-      window.addEventListener('resize', onLayoutChange)
-
-      function mutationRelevant(mutations) {
-        for (var i = 0; i < mutations.length; i++) {
-          var t = mutations[i].target
-          var el = t instanceof Element ? t : (t && t.parentElement)
-          if (el === null || !el.closest) return true
-          if (el.closest('[data-composer-card]') || el.closest('[data-input-scroll]')
-            || el.closest('[data-annotation-for-dsh]') || el.closest('[data-annotation-overlay]')) {
-            continue
-          }
-          return true
-        }
-        return false
-      }
-      var observer = new MutationObserver(function (mutations) {
-        if (!mutationRelevant(mutations)) return
-        onLayoutChange()
-        // 消息行插入/内容填充的瞬间同步执行气泡装饰（隐藏批注块 + 贴标签）：
-        // MutationObserver 回调在微任务阶段运行，早于浏览器绘制，
-        // 用户看不到「先显示批注块再隐藏」的闪烁。
-        decorateAll()
-      })
-      observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true })
-
-      function onKeyDown(e) {
-        if (e.key === 'Escape') {
-          if (ui.mode !== 'closed') closeToolbar()
-          return
-        }
-        // 【回车随输入框发送】在 composer 里按 Enter（且已收集批注、非输入法合成）：
-        // 提交前一刻把批注块拼进草稿，composer 自己的 Enter 提交继续——模型收到
-        // 批注清单 + 用户输入的问题。用户始终看不到文本被塞进去。
-        // IME 铁律（v1.3.10 修了 nativeEvent.keyCode；v1.3.11 补 compositionend
-        // 后 Enter keyCode=13 的时序洞）：合成期 / 上屏确认 Enter 绝不能 setDraft。
-        if (e.key === 'Enter' && ui.quotes.length > 0 && !isImeKeyBlocked(e)) {
-          var ta = e.target
-          if (ta instanceof HTMLTextAreaElement && ta.closest && ta.closest('[data-composer-card]') !== null) {
-            attachAndSend()
-          }
-        }
-      }
-      // capture 阶段：必须先于 composer 自己的 Enter 处理（React 在容器层冒泡
-      // 提交）——否则等我们执行时消息已提交，拼稿永远太迟。
-      document.addEventListener('keydown', onKeyDown, true)
-
-      // ---------- 渲染 ----------
-      function iconButton(cls, icon, title, onClick) {
-        var b = document.createElement('button')
-        b.type = 'button'
-        b.className = cls
-        b.title = title
-        b.appendChild(icon())
-        b.addEventListener('click', function () { ignoreUntil = Date.now() + 80; onClick() })
-        return b
-      }
-
-      function ghostButton(icon, label, title, disabled, onClick) {
-        var b = document.createElement('button')
-        b.type = 'button'
-        b.className = 'dsh-ann-ghost'
-        b.title = title
-        if (icon !== null) b.appendChild(icon())
-        b.appendChild(document.createTextNode(label))
-        b.disabled = disabled === true
-        b.addEventListener('click', function () { ignoreUntil = Date.now() + 80; onClick() })
-        return b
-      }
-
-      function render() {
-        host.textContent = ''
-        ui.el = null
-        if (ui.mode === 'actions') {
-          var bar = document.createElement('div')
-          bar.className = 'dsh-ann-bar'
-          bar.style.left = ui.pos.left + 'px'
-          bar.style.top = ui.pos.top + 'px'
-          var already = ui.quotes.some(function (q) { return q.text === ui.quote })
-          bar.appendChild(ghostButton(
-            already ? null : ICONS.plus,
-            already ? '已批注' : '批注',
-            already ? '这段内容已在批注清单中' : '为选中的内容写一条批注',
-            already,
-            enterEditing,
-          ))
-          bar.appendChild(iconButton('dsh-ann-icon', ICONS.close, '关闭', closeToolbar))
-          host.appendChild(bar)
-          ui.el = bar
-        } else if (ui.mode === 'editing') {
-          var card = document.createElement('div')
-          card.className = 'dsh-ann-card'
-          card.style.left = ui.pos.left + 'px'
-          card.style.top = ui.pos.top + 'px'
-          ui.el = card
-          var head = document.createElement('div')
-          head.className = 'dsh-ann-card-head'
-          var title = document.createElement('div')
-          title.className = 'dsh-ann-card-title'
-          title.textContent = ui.editingId !== null ? '编辑批注' : '添加批注'
-          head.appendChild(title)
-          head.appendChild(iconButton('dsh-ann-icon', ICONS.close, '取消', closeToolbar))
-          card.appendChild(head)
-          var quote = document.createElement('div')
-          quote.className = 'dsh-ann-quote'
-          quote.textContent = truncate(ui.quote, 200)
-          quote.title = ui.quote
-          card.appendChild(quote)
-          var ta = document.createElement('textarea')
-          ta.className = 'dsh-ann-input'
-          ta.placeholder = '写下批注…（可留空，保存后仅标记原文）'
-          ta.value = ui.noteDraft
-          ta.spellcheck = false
-          ta.addEventListener('input', function () { ui.noteDraft = ta.value })
-          ta.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter' && !e.shiftKey && !isImeKeyBlocked(e)) { e.preventDefault(); saveAnnotation() }
-          })
-          card.appendChild(ta)
-          var row = document.createElement('div')
-          row.className = 'dsh-ann-row'
-          var cancel = document.createElement('button')
-          cancel.className = 'dsh-ann-cancel'
-          cancel.type = 'button'
-          cancel.textContent = '取消'
-          cancel.addEventListener('click', closeToolbar)
-          var save = document.createElement('button')
-          save.type = 'button'
-          save.className = 'dsh-ann-action'
-          save.appendChild(ICONS.check())
-          save.appendChild(document.createTextNode('保存批注'))
-          save.addEventListener('click', saveAnnotation)
-          row.appendChild(cancel)
-          row.appendChild(save)
-          card.appendChild(row)
-          if (ui.error !== null) {
-            var err = document.createElement('div')
-            err.className = 'dsh-ann-error'
-            err.textContent = ui.error
-            card.appendChild(err)
-          }
-          host.appendChild(card)
-          ta.focus()
-          ta.setSelectionRange(ta.value.length, ta.value.length)
-          requestAnimationFrame(function () {
-            var h = card.offsetHeight
-            var t = parseFloat(card.style.top)
-            if (t + h > window.innerHeight - 8) {
-              card.style.top = Math.max(8, window.innerHeight - h - 8) + 'px'
-            }
-          })
-        }
-      }
-
-      // ---------- 批注标记 ----------
-      var markersSig = null
-      function markersSignature() {
-        var parts = []
-        for (var i = 0; i < ui.quotes.length; i++) {
-          var q = ui.quotes[i]
-          var range = locateQuote(q.text, q)
-          if (range === null) { parts.push(q.id + ':gone'); continue }
-          var rects = range.getClientRects()
-          for (var c = 0; c < rects.length; c++) {
-            var r = rects[c]
-            if (r.width === 0 || r.height === 0) continue
-            parts.push(q.id + ':' + Math.round(r.left) + ',' + Math.round(r.top) + ',' + Math.round(r.width) + ',' + Math.round(r.height))
-          }
-          if (rects.length > 0) parts.push(q.id + ':chip')
-        }
-        return parts.join('|')
-      }
-
-      function renderMarkers() {
-        var sig = markersSignature()
-        if (sig !== markersSig) {
-          markersSig = sig
-          overlay.textContent = ''
-          buildMarkers()
-        }
-      }
-
-      function buildMarkers() {
-        if (ui.quotes.length === 0) return
-        var placed = []
-        for (var i = 0; i < ui.quotes.length; i++) {
-          var q = ui.quotes[i]
-          var range = locateQuote(q.text, q)
-          if (range === null) continue
-          var rects = range.getClientRects()
-          for (var c = 0; c < rects.length; c++) {
-            var rect = rects[c]
-            if (rect.width === 0 || rect.height === 0) continue
-            var hl = document.createElement('div')
-            hl.className = 'dsh-ann-hl'
-            hl.style.left = rect.left + 'px'
-            hl.style.top = rect.top + 'px'
-            hl.style.width = rect.width + 'px'
-            hl.style.height = rect.height + 'px'
-            overlay.appendChild(hl)
-          }
-          var anchor = null
-          for (var k = 0; k < rects.length; k++) {
-            var r = rects[k]
-            if (r.width === 0 || r.height === 0) continue
-            if (r.top > -8 && r.top < window.innerHeight) { anchor = r; break }
-          }
-          if (anchor === null && rects.length > 0 && rects[0].width > 0) anchor = rects[0]
-          if (anchor !== null) {
-            var chip = document.createElement('div')
-            chip.className = 'dsh-ann-num'
-            chip.textContent = String(i + 1)
-            var chipTop = anchor.top - 20
-            if (chipTop < 4) chipTop = Math.min(anchor.top + 2, window.innerHeight - 22)
-            if (chipTop < 4) chipTop = 4
-            var chipLeft = Math.max(4, Math.min(anchor.left - 4, window.innerWidth - 24))
-            var tries = 0
-            while (tries < 12) {
-              var clash = false
-              for (var p = 0; p < placed.length; p++) {
-                var bp = placed[p]
-                if (Math.abs(bp.left - chipLeft) < 18 && Math.abs(bp.top - chipTop) < 18) {
-                  clash = true
-                  break
-                }
-              }
-              if (!clash) break
-              chipLeft += 18
-              if (chipLeft > window.innerWidth - 24) { chipLeft = 4; chipTop += 18 }
-              tries++
-            }
-            placed.push({ left: chipLeft, top: chipTop })
-            chip.style.left = chipLeft + 'px'
-            chip.style.top = chipTop + 'px'
-            ;(function (q) {
-              chip.addEventListener('click', function (ev) {
-                ev.stopPropagation()
-                openEditorFor(q)
-              })
-            })(q)
-            overlay.appendChild(chip)
-          }
-        }
-      }
-
-      // ---------- 动作 ----------
-      function captureAnchor(text) {
-        var anchor = {
-          range: null, seqKey: '', rowHead: '', textOffset: -1,
-          ctxBefore: '', ctxAfter: '',
-        }
-        try {
-          var sel = window.getSelection()
-          if (sel === null || sel.isCollapsed || sel.rangeCount === 0) return anchor
-          var live = sel.getRangeAt(0)
-          var liveText = live.toString()
-          // 选区文本与 settle 快照一致才持有 live range；不一致（选区微变、DOM
-          // 被批注芯片等装饰改写）时也绝不返回全空锚——尽力抓行级锚点
-          // （seqKey/rowHead），让 locateQuote 在锚点消息内宽松重定位。
-          var textMatch = liveText.trim() === text
-            || liveText.trim().replace(/\s+/g, ' ') === text.replace(/\s+/g, ' ')
-          if (textMatch) {
-            anchor.range = live.cloneRange()
-          }
-          var node = live.commonAncestorContainer
-          var el = node instanceof Element ? node : (node !== null ? node.parentElement : null)
-          while (el !== null && el !== document.body && !el.hasAttribute('data-chat-anchor-key')) {
-            el = el.parentElement
-          }
-          if (el !== null && el.hasAttribute('data-chat-anchor-key')) {
-            anchor.seqKey = el.getAttribute('data-chat-anchor-key') || ''
-            if (textMatch) {
-              var itemText = el.textContent || ''
-              var realOff = offsetOfRangeInRow(el, live)
-              if (realOff >= 0) {
-                anchor.textOffset = realOff
-                anchor.ctxBefore = itemText.slice(Math.max(0, realOff - 24), realOff)
-                anchor.ctxAfter = itemText.slice(realOff + text.length, realOff + text.length + 24)
-              }
-            }
-          }
-          var row = assistantRowOf(live.commonAncestorContainer)
-          if (row !== null) {
-            anchor.rowHead = (row.textContent || '').slice(0, 24)
-          }
-        } catch (_) { /* 抓取失败则保持空锚 */ }
-        return anchor
-      }
-
-      function enterEditing() {
-        ui.mode = 'editing'
-        ui.noteDraft = ''
-        ui.error = null
-        ui.editingId = null
-        ui.pendingAnchor = captureAnchor(ui.quote)
-        render()
-      }
-
-      /** 点击角标数字 → 重新打开该批注的编辑面板（预填批注内容，可修改后保存）。 */
-      function openEditorFor(q) {
-        ui.mode = 'editing'
-        ui.quote = q.text
-        ui.noteDraft = q.note !== undefined ? q.note : ''
-        ui.error = null
-        ui.editingId = q.id
-        ui.pendingAnchor = null
-        var range = locateQuote(q.text, q)
-        var rect = range !== null ? range.getBoundingClientRect() : null
-        ui.pos = rect !== null && rect.width > 0
-          ? placeAbove(rect, 40)
-          : { left: 8, top: 8 }
-        render()
-      }
-
-      /** 组装批注块（编号 + 原文 + 批注，结尾带唯一的「提问：」分隔标记——
-       *  不用「问题：」是因为标题行「回答我的问题：」里也含它，气泡隐藏手术会误命中）。 */
-      function buildBlock() {
-        var parts = ui.quotes.map(function (q, i) {
-          var s = (i + 1) + '. ' + q.text.replace(/\n/g, '\n   ')
-          if (q.note !== undefined && q.note.trim() !== '') {
-            s += '\n   批注：' + q.note.replace(/\n/g, '\n    ')
-          }
-          return s
-        })
-        return '我批注了以下 ' + ui.quotes.length + ' 处内容（编号与原文对应），请针对它们回答我的问题：\n\n'
-          + parts.join('\n\n')
-          + '\n\n请用「Annotation 1：…」到「Annotation ' + ui.quotes.length + '：…」的格式，逐条回应上面每一条批注，最后再回答我的问题。\n\n提问：'
-      }
-
-      /** 提交前把批注块拼进 composer 草稿（随回车一起发送）。 */
-      function attachAndSend() {
-        var current = sessions.list.getSnapshot().current
-        if (current === undefined) return
-        try {
-          var scoped = sessions.scope(current)
-          if (scoped === undefined) return
-          var shell = ctx.conversation.input.for(scoped)
-          var st = shell.state.getSnapshot()
-          var draft = st.draft || ''
-          // 草稿已含批注块（上次追加未发送）→ 不重复追加。
-          if (draft.indexOf('我批注了以下') !== -1) return
-          var block = buildBlock()
-          shell.setDraft(block + '\n' + draft)
-          console.log('[annotation] 批注块已拼入草稿，回车将随消息发送（' + ui.quotes.length + ' 条）')
-        } catch (err) {
-          console.warn('[annotation] 批注拼稿失败：', err)
-          showToast('批注拼稿失败，消息将不带批注发送：' + (err && err.message ? err.message : err))
-        }
-      }
-
-      function saveAnnotation() {
-        var text = ui.quote
-        if (text === '') { ui.error = '没有选中的内容'; render(); return }
-        var note = ui.noteDraft.trim()
-        // 编辑已有批注（点击角标进入）：按 id 更新批注内容。
-        if (ui.editingId !== null) {
-          for (var ei = 0; ei < ui.quotes.length; ei++) {
-            if (ui.quotes[ei].id === ui.editingId) {
-              ui.quotes[ei].note = note
-              ui.editingId = null
-              ui.pendingAnchor = null
-              ui.noteDraft = ''
-              ui.error = null
-              closeToolbar()
-              updateChip()
-              renderMarkers()
-              return
-            }
-          }
-          ui.editingId = null
-        }
-        if (!ui.quotes.some(function (q) { return q.text === text })) {
-          var a = ui.pendingAnchor || { range: null, seqKey: '', rowHead: '', textOffset: -1, ctxBefore: '', ctxAfter: '' }
-          ui.quotes.push({
-            id: 'q-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6),
-            text: text,
-            note: note,
-            range: a.range,
-            seqKey: a.seqKey,
-            rowHead: a.rowHead,
-            textOffset: a.textOffset,
-            ctxBefore: a.ctxBefore,
-            ctxAfter: a.ctxAfter,
-          })
-        }
-        ui.pendingAnchor = null
-        ui.noteDraft = ''
-        ui.error = null
-        closeToolbar()
-        updateChip()
-        renderMarkers()
-      }
-
-      function removeQuote(id) {
-        ui.quotes = ui.quotes.filter(function (q) { return q.id !== id })
-        updateChip()
-        render()
-        renderMarkers()
-        // 面板正在显示时同步重建：否则删掉的条目还留在面板里，必须重新 hover 才消失。
-        if (tipLayer.childNodes.length > 0) showChipTip()
-      }
-
-      function closeToolbar() {
-        if (ui.mode === 'closed') return
-        clearSettle()
-        ui.mode = 'closed'
-        ui.error = null
-        ui.busy = false
-        ui.lastKey = ''
-        ui.editingId = null
-        render()
-      }
-
-      // ---------- 输入框旁的批注标签（N 条批注 · 悬浮看全部内容） ----------
-      var chipLayer = document.createElement('div')
-      chipLayer.setAttribute('data-annotation-chip', '')
-      chipLayer.style.cssText = 'position:fixed;z-index:1150;display:none;align-items:center;gap:4px;height:22px;padding:0 10px;border-radius:11px;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu,#2c2c2e);box-shadow:var(--dsw-shadow-lv3);font-family:var(--dsw-font-family,system-ui);font-size:11px;color:var(--dsw-alias-label-primary);cursor:default;'
-      document.body.appendChild(chipLayer)
-      var tipLayer = document.createElement('div')
-      tipLayer.setAttribute('data-annotation-tip-layer', '')
-      document.body.appendChild(tipLayer)
-
-      function updateChip() {
-        if (ui.quotes.length === 0) {
-          chipLayer.style.display = 'none'
-          tipLayer.textContent = ''
-          return
-        }
-        chipLayer.textContent = ''
-        var b = document.createElement('b')
-        b.style.cssText = 'color:var(--dsw-alias-text-accent,#4c9aff);font-weight:700;'
-        b.textContent = String(ui.quotes.length)
-        chipLayer.appendChild(b)
-        chipLayer.appendChild(document.createTextNode('条批注'))
-        var card = document.querySelector('[data-composer-card]')
-        if (card === null) { chipLayer.style.display = 'none'; return }
-        var r = card.getBoundingClientRect()
-        var w = chipLayer.offsetWidth || 80
-        chipLayer.style.left = Math.max(8, r.right - w - 12) + 'px'
-        chipLayer.style.top = Math.max(8, r.top - 30) + 'px'
-        chipLayer.style.display = 'flex'
-      }
-
-      // 悬停宽限：标签与面板间有间隙，鼠标跨越间隙的瞬间不在任何元素上——
-      // 离开后给 250ms 宽限期，期间进入面板则取消关闭（官方 HoverCard 的
-      // pointer-grace 同款思路），同时杜绝闪烁循环。
-      var hoverGrace = null
-      function scheduleHide() {
-        if (hoverGrace !== null) clearTimeout(hoverGrace)
-        hoverGrace = setTimeout(function () {
-          hoverGrace = null
-          tipLayer.textContent = ''
-        }, 250)
-      }
-      function cancelHide() {
-        if (hoverGrace !== null) { clearTimeout(hoverGrace); hoverGrace = null }
-      }
-      chipLayer.addEventListener('mouseenter', function () { cancelHide(); showChipTip() })
-      chipLayer.addEventListener('mouseleave', scheduleHide)
-      tipLayer.addEventListener('mouseenter', cancelHide)
-      tipLayer.addEventListener('mouseleave', scheduleHide)
-
-      function showChipTip() {
-        if (ui.quotes.length === 0) return
-        tipLayer.textContent = ''
-        var el = document.createElement('div')
-        el.className = 'dsh-ann-tip'
-        el.style.cssText = 'position:fixed;z-index:1160;width:300px;max-width:calc(100vw - 16px);padding:10px 12px;border-radius:12px;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu,#2c2c2e);box-shadow:var(--dsw-shadow-lv3);font-family:var(--dsw-font-family,system-ui);font-size:12px;color:var(--dsw-alias-label-primary);'
-        var head = document.createElement('div')
-        head.style.cssText = 'font-weight:600;margin-bottom:6px;'
-        head.textContent = '批注（' + ui.quotes.length + ' 条）'
-        el.appendChild(head)
-        for (var i = 0; i < ui.quotes.length; i++) {
-          var q = ui.quotes[i]
-          var item = document.createElement('div')
-          item.style.cssText = 'padding:6px 0;border-top:1px solid var(--dsw-alias-border-strong,#444);'
-          var num = document.createElement('span')
-          num.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;margin-right:6px;border-radius:8px;background:var(--dsw-alias-text-accent,#4c9aff);color:#fff;font-size:10px;font-weight:700;'
-          num.textContent = String(i + 1)
-          var body = document.createElement('span')
-          body.style.cssText = 'font-size:11px;line-height:1.5;color:var(--dsw-alias-label-tertiary);'
-          body.textContent = truncate(q.text, 50)
-          item.appendChild(num)
-          item.appendChild(body)
-          if (q.note !== undefined && q.note.trim() !== '') {
-            var note = document.createElement('div')
-            note.style.cssText = 'font-size:11px;color:var(--dsw-alias-label-secondary);margin:2px 0 0 22px;word-break:break-word;'
-            note.textContent = '批注：' + truncate(q.note, 60)
-            item.appendChild(note)
-          }
-          var del = document.createElement('button')
-          del.type = 'button'
-          del.textContent = '删'
-          del.style.cssText = 'margin-left:8px;background:transparent;border:1px solid rgba(255,107,107,.4);color:#ff8a8a;border-radius:6px;font-size:10px;cursor:pointer;padding:1px 6px;'
-          ;(function (qid) {
-            del.addEventListener('click', function (ev) {
-              ev.stopPropagation()
-              removeQuote(qid)
-            })
-          })(q.id)
-          item.appendChild(del)
-          el.appendChild(item)
-        }
-        tipLayer.appendChild(el)
-        var r2 = chipLayer.getBoundingClientRect()
-        var w2 = 300
-        var h2 = el.offsetHeight || 120
-        var left = Math.max(8, Math.min(r2.left, window.innerWidth - w2 - 8))
-        var top = r2.top - h2 - 6
-        if (top < 8) top = r2.bottom + 6
-        el.style.left = left + 'px'
-        el.style.top = Math.max(8, top) + 'px'
-        el.style.width = w2 + 'px'
-      }
-
-      // ---------- 发送完成监听（草稿从有内容变空 → 清空批注集） ----------
-      var inputUnsub = null
-      function watchInputDraft() {
-        if (typeof inputUnsub === 'function') { inputUnsub(); inputUnsub = null }
-        var id = sessions.list.getSnapshot().current
-        if (id === undefined) return
-        try {
-          var sc = sessions.scope(id)
-          if (sc === undefined) return
-          var sh = ctx.conversation.input.for(sc)
-          var hadDraft = false
-          inputUnsub = sh.state.subscribe(function () {
-            var d = (sh.state.getSnapshot().draft || '').trim()
-            var wasHad = hadDraft
-            hadDraft = d !== ''
-            if (ui.quotes.length === 0) return
-            // 发送完成：草稿从有内容变空 → 脚标消失、编号下次从 1 开始；
-            // 同时在刚发出的用户消息气泡上贴「N 条批注」标签。
-            if (wasHad && d === '') {
-              var sentItems = ui.quotes.map(function (q) {
-                return { text: q.text, note: q.note || '' }
-              })
-              ui.quotes = []
-              tipLayer.textContent = ''
-              updateChip()
-              renderMarkers()
-              pendingDeco.push({ items: sentItems })
-              kickDecorate()
-            }
-          })
-        } catch (_) { inputUnsub = null }
-      }
-
-      /** 把批注块文本从用户消息气泡里藏掉（模型消息内容不受影响）：
-       *  用户气泡是纯文本渲染（MessageText，单个文本节点），
-       *  找到最后一个「\n提问：」（老格式回退「\n问题：」），
-       *  保留其后的用户问题，整块批注文本从 DOM 移除。
-       *  返回是否成功（内容未渲染完时返回 false，轮询稍后重试）。 */
-      function hideAnnotationBlock(row) {
-        try {
-          var bubble = row.querySelector('[class*="bubble"]')
-          if (bubble === null) return false
-          var nodes = []
-          var full = ''
-          var walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT)
-          var n
-          while ((n = walker.nextNode()) !== null) {
-            nodes.push(n)
-            full += n.nodeValue || ''
-          }
-          // 标记定位：优先「\n提问：」→「\n问题：」→ 裸「提问：」→ 裸「问题：」。
-          var marker = -1
-          var pairs = [['\n提问：', '\n问题：'], ['提问：', '问题：']]
-          for (var p = 0; p < pairs.length && marker === -1; p++) {
-            for (var k = 0; k < 2; k++) {
-              var idx = full.lastIndexOf(pairs[p][k])
-              if (idx !== -1) { marker = idx; break }
-            }
-          }
-          if (marker === -1) return false
-          // 标记若带「\n」前缀（段落起头），切掉长度 4（\n提问：），否则 3（提问：）。
-          var skip = full.charAt(marker) === '\n' ? 4 : 3
-          // 定位到具体文本节点。
-          var pos = 0
-          var ti = -1
-          var inner = 0
-          for (var j = 0; j < nodes.length; j++) {
-            var len = (nodes[j].nodeValue || '').length
-            if (marker < pos + len) { ti = j; inner = marker - pos; break }
-            pos += len
-          }
-          if (ti === -1) return false
-          // 去掉标记及其前的所有内容，保留其后的问题。
-          nodes[ti].nodeValue = (nodes[ti].nodeValue || '').slice(inner + skip).replace(/^\s+/, '')
-          for (var m2 = ti - 1; m2 >= 0; m2--) {
-            if (nodes[m2].parentNode !== null) nodes[m2].parentNode.removeChild(nodes[m2])
-          }
-          // 清理空元素。
-          var empties = bubble.querySelectorAll('div,span,p')
-          for (var e = 0; e < empties.length; e++) {
-            var em = empties[e]
-            if (em.parentNode !== null && (em.textContent || '').trim() === '') em.remove()
-          }
-          return true
-        } catch (err) {
-          console.warn('[annotation] 气泡隐藏手术失败：', err)
-          return false
-        }
-      }
-
-      /** 从气泡文本反解析批注条目（用于刷新后旧消息的 hover 内容）。 */
-      function parseItemsFromBubble(row) {
-        try {
-          var b = row.querySelector('[class*="bubble"]')
-          var text = (b ? b.textContent : '') || ''
-          var mi = text.lastIndexOf('\n\n提问：')
-          if (mi === -1) mi = text.lastIndexOf('\n\n问题：')
-          if (mi !== -1) text = text.slice(0, mi)
-          var nl = text.indexOf('\n\n')
-          var body = nl === -1 ? '' : text.slice(nl + 2)
-          var out = []
-          var parts = body.split('\n\n')
-          for (var i = 0; i < parts.length; i++) {
-            var mm = /^(\d+)\.\s*([\s\S]*)$/.exec(parts[i])
-            if (mm === null) continue
-            var item = mm[2]
-            var note = ''
-            var nm = /\n   批注：([\s\S]*)$/.exec(item)
-            if (nm !== null) { note = nm[1].trim(); item = item.slice(0, nm.index) }
-            out.push({ text: item.replace(/\n   /g, '\n').trim(), note: note })
-          }
-          return out
-        } catch (_) { return [] }
-      }
-
-      /** 在用户气泡上贴「批注 ×N」标签（hover 显示条目内容）。 */
-      function attachBubbleTag(row, items) {
-        if (row.querySelector('[data-annotation-bubble-tag]') !== null) return
-        var bubble = row.querySelector('[class*="bubble"]') || row
-        var tag = document.createElement('span')
-        tag.setAttribute('data-annotation-bubble-tag', '')
-        tag.textContent = '批注 ×' + items.length
-        tag.style.cssText = 'display:inline-flex;align-items:center;height:18px;padding:0 8px;margin:4px 0 0 4px;border-radius:9px;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu,#2c2c2e);color:var(--dsw-alias-label-secondary);font-family:var(--dsw-font-family,system-ui);font-size:10px;cursor:default;'
-        ;(function (list) {
-          tag.addEventListener('mouseenter', function () {
-            tipLayer.textContent = ''
-            var el = document.createElement('div')
-            el.style.cssText = 'position:fixed;z-index:1160;width:300px;max-width:calc(100vw - 16px);padding:10px 12px;border-radius:12px;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu,#2c2c2e);box-shadow:var(--dsw-shadow-lv3);font-family:var(--dsw-font-family,system-ui);font-size:12px;color:var(--dsw-alias-label-primary);'
-            var head = document.createElement('div')
-            head.style.cssText = 'font-weight:600;margin-bottom:6px;'
-            head.textContent = '本消息携带批注（' + list.length + ' 条）'
-            el.appendChild(head)
-            for (var i = 0; i < list.length; i++) {
-              var item = document.createElement('div')
-              item.style.cssText = 'padding:6px 0;border-top:1px solid var(--dsw-alias-border-strong,#444);'
-              var num = document.createElement('span')
-              num.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;margin-right:6px;border-radius:8px;background:var(--dsw-alias-text-accent,#4c9aff);color:#fff;font-size:10px;font-weight:700;'
-              num.textContent = String(i + 1)
-              var body = document.createElement('span')
-              body.style.cssText = 'font-size:11px;line-height:1.5;color:var(--dsw-alias-label-tertiary);'
-              body.textContent = truncate(list[i].text, 50)
-              item.appendChild(num)
-              item.appendChild(body)
-              if (list[i].note !== '') {
-                var note = document.createElement('div')
-                note.style.cssText = 'font-size:11px;color:var(--dsw-alias-label-secondary);margin:2px 0 0 22px;word-break:break-word;'
-                note.textContent = '批注：' + truncate(list[i].note, 60)
-                item.appendChild(note)
-              }
-              el.appendChild(item)
-            }
-            tipLayer.appendChild(el)
-            var r2 = tag.getBoundingClientRect()
-            var w2 = 300
-            var h2 = el.offsetHeight || 120
-            var left = Math.max(8, Math.min(r2.left, window.innerWidth - w2 - 8))
-            var top = r2.bottom + 6
-            if (top + h2 > window.innerHeight - 8) top = r2.top - h2 - 6
-            el.style.left = left + 'px'
-            el.style.top = Math.max(8, top) + 'px'
-            el.style.width = w2 + 'px'
-          })
-          var bubbleGrace = null
-          function bubbleHide() {
-            if (bubbleGrace !== null) clearTimeout(bubbleGrace)
-            bubbleGrace = setTimeout(function () {
-              bubbleGrace = null
-              tipLayer.textContent = ''
-            }, 250)
-          }
-          function bubbleKeep() {
-            if (bubbleGrace !== null) { clearTimeout(bubbleGrace); bubbleGrace = null }
-          }
-          tag.addEventListener('mouseleave', bubbleHide)
-          tipLayer.addEventListener('mouseenter', bubbleKeep)
-          tipLayer.addEventListener('mouseleave', bubbleHide)
-        })(items)
-        tag.__annotationItems = items
-        bubble.appendChild(tag)
-        console.log('[annotation] 气泡已贴批注标签 ×' + items.length)
-      }
-
-      /** 发送完成时暂存批注数据（供气泡 hover 面板使用）。 */
-      var pendingDeco = []
-
-      // ---------- 助手回复中的「Annotation N：」→ 悬浮批注芯片 ----------
-
-      /** 找到该回复行之前最近一条携带批注标签的用户消息的条目数据。 */
-      function findPrevAnnotationItems(row) {
-        var rows = allMessageRows()
-        var idx = rows.indexOf(row)
-        if (idx === -1) return null
-        for (var i = idx - 1; i >= 0; i--) {
-          var tag = rows[i].querySelector('[data-annotation-bubble-tag]')
-          if (tag !== null && Array.isArray(tag.__annotationItems) && tag.__annotationItems.length > 0) {
-            return tag.__annotationItems
-          }
-        }
-        return null
-      }
-
-      /** 一次性诊断（仅控制台，不打扰用户）：标记行 + 原因。 */
-      function markRowDiag(row, msg) {
-        if (row.hasAttribute('data-annotation-diag')) return
-        row.setAttribute('data-annotation-diag', '')
-        console.warn('[annotation] ' + msg, row)
-      }
-
-      /** 扫描所有已结束流式输出的助手行：把「Annotation N：」替换为可悬浮芯片。 */
-      function decorateAssistantAnnotations() {
-        var rows = assistantRows()
-        for (var i = 0; i < rows.length; i++) {
-          var el = rows[i]
-          if (!isAssistantRow(el)) continue
-          // 新版 data-streaming 标记在 AssistantMarkdown 内部元素上（行元素
-          // 本身没有）——必须查行内，否则流式输出途中就把「Annotation N：」
-          // 替换成芯片，与 React 正在更新的文本节点冲突，整条回复可能渲染
-          // 异常（表现为看不到回复消息）。
-          if (el.hasAttribute('data-streaming') || el.querySelector('[data-streaming]') !== null) continue
-          if (el.querySelector('[data-annotation-reply-chip]') !== null) continue
-          if ((el.textContent || '').indexOf('Annotation') === -1) continue
-          var items = findPrevAnnotationItems(el)
-          if (items === null || items.length === 0) {
-            // 拿不到条目数据也照样生成芯片（hover 显示占位），并一次性提示。
-            items = []
-            markRowDiag(el, '未找到批注条目数据，芯片将显示占位内容（可继续用）')
-          }
-          decorateAnnotationLabels(el, items)
-        }
-      }
-
-      /** 在行内所有文本节点中找「Annotation N：」（不区分大小写），替换为芯片。 */
-      function decorateAnnotationLabels(row, items) {
-        var re = /Annotation[\s\u200b\u200c\u200d\u00ad]*(\d+)[\s\u200b\u200c\u200d\u00ad]*[:：]/gi
-        // 先快照所有文本节点，再逐个处理：遍历中途修改树会让 TreeWalker
-        // 指针失效（处理完第一个节点后遍历就断了）——这是「只有第一个
-        // Annotation 变成芯片」的根因。
-        var nodes = []
-        var walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT)
-        var n
-        while ((n = walker.nextNode()) !== null) nodes.push(n)
-        var done = 0
-        for (var i = 0; i < nodes.length; i++) {
-          n = nodes[i]
-          if (n.parentNode === null) continue
-          var v = n.nodeValue || ''
-          re.lastIndex = 0
-          if (!re.test(v)) continue
-          var frag = document.createDocumentFragment()
-          var last = 0
-          re.lastIndex = 0
-          var m
-          while ((m = re.exec(v)) !== null) {
-            if (m.index > last) frag.appendChild(document.createTextNode(v.slice(last, m.index)))
-            frag.appendChild(makeReplyChip(parseInt(m[1], 10), items))
-            last = m.index + m[0].length
-            done++
-          }
-          if (last < v.length) frag.appendChild(document.createTextNode(v.slice(last)))
-          n.parentNode.replaceChild(frag, n)
-        }
-        if (done > 0) {
-          console.log('[annotation] 回复批注芯片 ×' + done, row.querySelectorAll('[data-annotation-reply-chip]').length + ' 个元素')
-        } else {
-          // 行内含 Annotation 但一个都没匹配上 → 文本节点里没有完整「Annotation N：」模式
-          markRowDiag(row, '行内含 Annotation 但未匹配到「Annotation N：」模式')
-        }
-      }
-
-      /** 构造「Annotation N」芯片（hover 显示该批注的原文与批注内容）。 */
-      function makeReplyChip(num, items) {
-        var chip = document.createElement('span')
-        chip.setAttribute('data-annotation-reply-chip', '')
-        chip.style.cssText = 'display:inline-flex;align-items:center;height:18px;padding:0 6px;margin:0 2px;border-radius:9px;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu,#2c2c2e);color:var(--dsw-alias-text-accent,#4c9aff);font-family:var(--dsw-font-family,system-ui);font-size:11px;font-weight:600;cursor:default;vertical-align:middle;'
-        chip.textContent = 'Annotation ' + num
-        var item = items[num - 1]
-        var grace = null
-        function hide() {
-          if (grace !== null) clearTimeout(grace)
-          grace = setTimeout(function () { grace = null; tipLayer.textContent = '' }, 250)
-        }
-        function keep() {
-          if (grace !== null) { clearTimeout(grace); grace = null }
-        }
-        chip.addEventListener('mouseenter', function () {
-          tipLayer.textContent = ''
-          var el = document.createElement('div')
-          el.style.cssText = 'position:fixed;z-index:1160;width:320px;max-width:calc(100vw - 16px);padding:10px 12px;border-radius:12px;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu,#2c2c2e);box-shadow:var(--dsw-shadow-lv3);font-family:var(--dsw-font-family,system-ui);font-size:12px;color:var(--dsw-alias-label-primary);'
-          var head = document.createElement('div')
-          head.style.cssText = 'font-weight:600;margin-bottom:6px;'
-          head.textContent = item !== undefined ? '批注 ' + num + ' 的原文' : '批注 ' + num
-          el.appendChild(head)
-          if (item !== undefined) {
-            var quote = document.createElement('div')
-            quote.style.cssText = 'font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary);word-break:break-word;padding:6px 8px;border-radius:8px;background:rgba(127,127,127,.12);'
-            quote.textContent = truncate(item.text, 140)
-            el.appendChild(quote)
-            if (item.note !== '') {
-              var note = document.createElement('div')
-              note.style.cssText = 'font-size:11px;color:var(--dsw-alias-text-accent,#4c9aff);margin-top:6px;word-break:break-word;'
-              note.textContent = '你的批注：' + truncate(item.note, 80)
-              el.appendChild(note)
-            }
-          } else {
-            var none = document.createElement('div')
-            none.style.cssText = 'font-size:11px;color:var(--dsw-alias-label-tertiary);'
-            none.textContent = '（未找到对应批注条目）'
-            el.appendChild(none)
-          }
-          tipLayer.appendChild(el)
-          var r2 = chip.getBoundingClientRect()
-          var w2 = 320
-          var h2 = el.offsetHeight || 100
-          var left = Math.max(8, Math.min(r2.left, window.innerWidth - w2 - 8))
-          var top = r2.bottom + 6
-          if (top + h2 > window.innerHeight - 8) top = r2.top - h2 - 6
-          el.style.left = left + 'px'
-          el.style.top = Math.max(8, top) + 'px'
-          el.style.width = w2 + 'px'
-        })
-        chip.addEventListener('mouseleave', hide)
-        tipLayer.addEventListener('mouseenter', keep)
-        tipLayer.addEventListener('mouseleave', hide)
-        return chip
-      }
-
-      /** 全局轮询装饰：找所有「携带批注块但未装饰」的用户气泡 → 隐藏批注块 + 贴标签。
-       *  不依赖发送事件链：异步渲染、刷新后的历史消息都能被覆盖。 */
-      function decorateAll() {
-        try {
-          var rows = allMessageRows()
-          for (var i = rows.length - 1; i >= 0; i--) {
-            var el = rows[i]
-            if (el.hasAttribute('data-pending-steering')) continue
-            if (el.querySelector('[data-annotation-bubble-tag]') !== null) continue
-            var b = el.querySelector('[class*="bubble"]')
-            if (b === null || (b.textContent || '').indexOf('我批注了以下') === -1) continue
-            // 最新一条优先消费发送时暂存的数据；其余从气泡文本反解析（须在隐藏前）。
-            var items = null
-            if (i === rows.length - 1 && pendingDeco.length > 0) items = pendingDeco.pop().items
-            if (items === null || items.length === 0) items = parseItemsFromBubble(el)
-            if (!hideAnnotationBlock(el)) continue // 内容未渲染完 → 留给下轮
-            attachBubbleTag(el, items)
-            // 批注已随消息真实发出（用户气泡带着批注块出现）→ 清空待发送批注集。
-            // 兜底 watchInputDraft 在初始化时会话未加载时失效的场景：若不清空，
-            // 之后每次在 composer 按 Enter 都会把批注块重新注入草稿，且 setDraft
-            // 可能打断输入法合成（中文上不了屏）。
-            if (ui.quotes.length > 0) {
-              ui.quotes = []
-              updateChip()
-              renderMarkers()
-            }
-          }
-          // 助手回复：把「Annotation N：」变为可悬浮的批注芯片（内容取自最近一条带批注的用户消息）。
-          decorateAssistantAnnotations()
-        } catch (err) {
-          console.warn('[annotation] 装饰扫描失败：', err)
-        }
-      }
-
-      var decoTimer = null
-      function kickDecorate() {
-        decorateAll()
-        if (decoTimer === null) decoTimer = setInterval(decorateAll, 1000)
-      }
-
-      // ---------- 会话切换时收起浮窗并清空批注 ----------
-      var lastSessionId = sessions.list.getSnapshot().current
-      var unsub = sessions.list.subscribe(function () {
-        var cur = sessions.list.getSnapshot().current
-        if (cur === lastSessionId) return
-        lastSessionId = cur
-        if (ui.mode !== 'closed') closeToolbar()
-        ui.quotes = []
-        ui.noteDraft = ''
-        tipLayer.textContent = ''
-        updateChip()
-        watchInputDraft()
-        renderMarkers()
-      })
-
-      watchInputDraft()
-      kickDecorate()
-      updateChip()
-
-      // ---------- 清理 ----------
-      return function () {
-        clearSettle()
-        document.removeEventListener('selectionchange', onSelection)
-        document.removeEventListener('pointerdown', onDocPointerDown, true)
-        document.removeEventListener('keydown', onKeyDown, true)
-        document.removeEventListener('compositionstart', markImeComposing, true)
-        document.removeEventListener('compositionend', markImeEnded, true)
-        if (imeClearTimer !== null) { clearTimeout(imeClearTimer); imeClearTimer = null }
-        window.removeEventListener('scroll', onLayoutChange, true)
-        window.removeEventListener('resize', onLayoutChange)
-        host.removeEventListener('pointerdown', onHostPointerDown)
-        observer.disconnect()
-        if (typeof unsub === 'function') unsub()
-        if (typeof inputUnsub === 'function') inputUnsub()
-        if (decoTimer !== null) { clearInterval(decoTimer); decoTimer = null }
-        chipLayer.remove()
-        tipLayer.remove()
-        host.remove()
-        overlay.remove()
-      }
-    }
-
-    exports.name = '@dsh-external/dsh-annotation'
-    exports.inject = ['sessions', 'conversation']
-    exports.apply = apply
-
-    return module.exports
-  },
-})
+	id: "@dsh-external/dsh-annotation",
+	factory: (require) => {
+		var module = { exports: {} };
+		var exports = module.exports;
+		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+		let react = require("react");
+		let react_jsx_runtime = require("react/jsx-runtime");
+		//#region src/client/codec.ts
+		/** The source name (serializer routing key for annotation occurrences). */
+		const SOURCE = "annotation";
+		/** The model-facing label prefix inside chip rendering. */
+		function chipLabel(index) {
+			return `批注 ${index + 1}`;
+		}
+		/** One notice's readable markdown body: quote, source index, and the note. */
+		function noticeText(item, index) {
+			return [
+				`> 引用：${item.target.exact}`,
+				`来源：消息 ${item.target.messageId}，第 ${index} 处`,
+				`批注：${item.note === "" ? "（未填写）" : item.note}`
+			].join("\n");
+		}
+		function createAnnotationSource(registry) {
+			return {
+				trigger: "@",
+				name: SOURCE,
+				candidates: () => Promise.resolve([]),
+				onPick: () => void 0,
+				codec: {
+					clipboardText: () => "",
+					serialize(session, ref) {
+						const draft = registry.get(session.sessionId);
+						const index = draft.items.findIndex((item) => item.id === ref);
+						if (index < 0) return Promise.reject(/* @__PURE__ */ new Error(`annotation "${ref}" is no longer pending in this session`));
+						const item = draft.items[index];
+						return Promise.resolve({
+							kind: "context",
+							batchId: draft.batchId,
+							summary: `批注 ${index + 1}`,
+							text: noticeText(item, index + 1)
+						});
+					},
+					committed(session, ref) {
+						registry.commit(session.sessionId, [ref]);
+					}
+				}
+			};
+		}
+		/** A chip insertion for one pending item (inserted at the draft tail). */
+		function chipInsert(item, index, draftLength, draftRev) {
+			return {
+				reference: {
+					source: SOURCE,
+					ref: item.id,
+					label: chipLabel(index),
+					clipboardText: ""
+				},
+				span: {
+					start: draftLength,
+					end: draftLength,
+					draftRev
+				}
+			};
+		}
+		//#endregion
+		//#region src/client/hash.ts
+		/**
+		* Deterministic, dependency-free content hash for batch ids. Not a security
+		* primitive — it only needs to flip on ANY content change so a reused
+		* batchId can never collide with changed data.
+		*/
+		/** FNV-1a 64-bit over UTF-16 code units, hex-encoded. */
+		function contentHash(input) {
+			let hash = 14695981039346656037n;
+			const prime = 1099511628211n;
+			for (let i = 0; i < input.length; i += 1) {
+				hash ^= BigInt(input.charCodeAt(i));
+				hash = hash * prime & 18446744073709551615n;
+			}
+			return hash.toString(16).padStart(16, "0");
+		}
+		//#endregion
+		//#region src/client/store.ts
+		/**
+		* Per-session pending annotation state: the single source of truth for the
+		* unsent batch. Persisted to localStorage per session (refresh, session
+		* switch, and reopen all restore the exact draft); batch ids derive from the
+		* item content so identical retries keep the id while any edit mints a new
+		* one.
+		*/
+		const STORAGE_PREFIX = "dsh-annotation:draft:v1:";
+		function storageKey(sessionId) {
+			return STORAGE_PREFIX + sessionId;
+		}
+		/** Derive the batch id from the exact item payloads (id-excluded: ids are stable, content is not). */
+		function deriveBatchId(items) {
+			return `ann-${contentHash(items.map((item) => `${item.target.messageId}\u0000${item.target.start}\u0000${item.target.end}\u0000${item.target.exact}\u0000${item.note}`).join(""))}`;
+		}
+		/** Fresh empty per-session draft state. */
+		function emptyDraft() {
+			return {
+				version: 1,
+				batchId: deriveBatchId([]),
+				items: []
+			};
+		}
+		/** Load the persisted draft for one session; a missing or malformed record yields empty. */
+		function loadDraft(sessionId, storage) {
+			const raw = storage.getItem(storageKey(sessionId));
+			if (raw === null) return emptyDraft();
+			try {
+				const parsed = JSON.parse(raw);
+				if (!isDraftState(parsed)) return emptyDraft();
+				return {
+					version: 1,
+					batchId: deriveBatchId(parsed.items),
+					items: parsed.items
+				};
+			} catch {
+				return emptyDraft();
+			}
+		}
+		/** Persist one session's draft (best-effort; storage failures never throw). */
+		function saveDraft(sessionId, draft, storage) {
+			try {
+				if (draft.items.length === 0) storage.removeItem(storageKey(sessionId));
+				else storage.setItem(storageKey(sessionId), JSON.stringify(draft));
+			} catch {}
+		}
+		/** Add one item (bound-checked). Returns null when the draft is full. */
+		function addItem(draft, item) {
+			if (draft.items.length >= 32) return null;
+			if (!withinBounds(item)) return null;
+			const items = [...draft.items, item];
+			return {
+				draft: {
+					version: 1,
+					batchId: deriveBatchId(items),
+					items
+				},
+				batchChanged: true
+			};
+		}
+		/** Replace one item's note in place. Returns the previous state untouched when the id is unknown. */
+		function updateNote(draft, id, note) {
+			const items = draft.items.map((item) => item.id === id ? {
+				...item,
+				note
+			} : item);
+			if (items.every((item, index) => item === draft.items[index])) return {
+				draft,
+				batchChanged: false
+			};
+			return {
+				draft: {
+					version: 1,
+					batchId: deriveBatchId(items),
+					items
+				},
+				batchChanged: true
+			};
+		}
+		/** Remove the items with the given ids in one step (the send-committed path). */
+		function removeItems(draft, ids) {
+			const drop = new Set(ids);
+			const items = draft.items.filter((item) => !drop.has(item.id));
+			if (items.length === draft.items.length) return {
+				draft,
+				batchChanged: false
+			};
+			return {
+				draft: {
+					version: 1,
+					batchId: deriveBatchId(items),
+					items
+				},
+				batchChanged: true
+			};
+		}
+		/** Clear every pending item. */
+		function clearItems(draft) {
+			if (draft.items.length === 0) return {
+				draft,
+				batchChanged: false
+			};
+			const items = [];
+			return {
+				draft: {
+					version: 1,
+					batchId: deriveBatchId(items),
+					items
+				},
+				batchChanged: true
+			};
+		}
+		/** Local bound check for one item (quote 8 KiB, note 4 KiB). */
+		function withinBounds(item) {
+			return utf8Bytes(item.target.exact) <= 8192 && utf8Bytes(item.note) <= 4096;
+		}
+		/** Trim the anchor context strings to their documented length. */
+		function boundAnchorContext(prefix, suffix) {
+			return {
+				prefix: prefix.slice(-40),
+				suffix: suffix.slice(0, 40)
+			};
+		}
+		/** UTF-8 byte length without TextEncoder allocations (browsers + jsdom). */
+		function utf8Bytes(value) {
+			let bytes = 0;
+			for (let i = 0; i < value.length; i += 1) {
+				const code = value.charCodeAt(i);
+				if (code < 128) bytes += 1;
+				else if (code < 2048) bytes += 2;
+				else if (code >= 55296 && code <= 56319 && i + 1 < value.length) {
+					const next = value.charCodeAt(i + 1);
+					if (next >= 56320 && next <= 57343) {
+						bytes += 4;
+						i += 1;
+					} else bytes += 3;
+				} else bytes += 3;
+			}
+			return bytes;
+		}
+		function isDraftState(value) {
+			if (typeof value !== "object" || value === null) return false;
+			const candidate = value;
+			if (candidate.version !== 1 || !Array.isArray(candidate.items)) return false;
+			return candidate.items.every((item) => typeof item === "object" && item !== null && typeof item.id === "string" && typeof item.note === "string" && typeof item.target === "object");
+		}
+		//#endregion
+		//#region src/client/anchor.ts
+		/** Anchor re-location over the flattened plain text of ONE message. */
+		function locateOffsets(plainText, target) {
+			if (target.end <= plainText.length && plainText.slice(target.start, target.end) === target.exact) return {
+				start: target.start,
+				end: target.end
+			};
+			const candidates = [];
+			let from = 0;
+			while (true) {
+				const at = plainText.indexOf(target.exact, from);
+				if (at < 0) break;
+				const before = plainText.slice(Math.max(0, at - target.prefix.length), at);
+				const after = plainText.slice(at + target.exact.length, at + target.exact.length + target.suffix.length);
+				let score = 0;
+				if (target.prefix !== "") score += before === target.prefix ? 2 : 0;
+				if (target.suffix !== "") score += after === target.suffix ? 2 : 0;
+				candidates.push({
+					start: at,
+					end: at + target.exact.length,
+					score
+				});
+				from = at + 1;
+			}
+			if (candidates.length === 0) return null;
+			const best = candidates.reduce((current, candidate) => candidate.score > current.score ? candidate : current);
+			if (candidates.length === 1 || best.score > 0) return {
+				start: best.start,
+				end: best.end
+			};
+			return null;
+		}
+		/** Build an anchor target from a DOM selection confined to ONE assistant message. */
+		function extractTarget(selection, root) {
+			if (selection.rangeCount === 0) return null;
+			const range = selection.getRangeAt(0);
+			if (range.collapsed) return null;
+			const container = messageContainerOf(range.startContainer, root);
+			if (container === null) return null;
+			if (messageContainerOf(range.endContainer, root) !== container) return null;
+			const messageId = container.getAttribute("data-dsh-assistant-message-id");
+			if (messageId === null || messageId === "") return null;
+			const text = flattenedText(container);
+			if (text.nodes.length === 0) return null;
+			const start = textOffsetOf(text, range.startContainer, range.startOffset);
+			const end = textOffsetOf(text, range.endContainer, range.endOffset);
+			if (start < 0 || end < start) return null;
+			const exact = plainTextSlice(text, start, end);
+			if (exact === "") return null;
+			const { prefix, suffix } = boundAnchorContext(plainTextSlice(text, Math.max(0, start - 40), start), plainTextSlice(text, end, end + 40));
+			return {
+				messageId,
+				start,
+				end,
+				exact,
+				prefix,
+				suffix
+			};
+		}
+		/** The annotatable assistant message element containing `node`, if any. */
+		function messageContainerOf(node, root) {
+			let current = node;
+			while (current !== null && current !== root) {
+				if (current instanceof HTMLElement && current.hasAttribute("data-dsh-assistant-selectable")) return current;
+				current = current.parentNode;
+			}
+			return null;
+		}
+		/** The annotatable message element with the given durable id, if present. */
+		function messageElementOf(messageId, root) {
+			return root.querySelector(`[data-dsh-assistant-selectable][data-dsh-assistant-message-id="${cssEscape(messageId)}"]`);
+		}
+		function flattenedText(container) {
+			const nodes = [];
+			const offsets = [];
+			let total = 0;
+			const walker = (container.ownerDocument ?? container.ownerDocument).createTreeWalker(container, NodeFilter.SHOW_TEXT);
+			let node = walker.nextNode();
+			while (node !== null) {
+				if (node instanceof Text && node.data.length > 0) {
+					nodes.push(node);
+					offsets.push(total);
+					total += node.data.length;
+				}
+				node = walker.nextNode();
+			}
+			return {
+				nodes,
+				offsets,
+				total
+			};
+		}
+		/** Character offset of (node, offset) within one flattened message; -1 when foreign. */
+		function textOffsetOf(text, node, offset) {
+			const index = text.nodes.indexOf(node);
+			if (index < 0) return -1;
+			return (text.offsets[index] ?? 0) + offset;
+		}
+		/** Plain-text slice of one flattened message. */
+		function plainTextSlice(text, start, end) {
+			let out = "";
+			for (let i = 0; i < text.nodes.length; i += 1) {
+				const node = text.nodes[i];
+				const nodeStart = text.offsets[i];
+				const nodeEnd = nodeStart + node.data.length;
+				if (nodeEnd <= start) continue;
+				if (nodeStart >= end) break;
+				const from = Math.max(start, nodeStart) - nodeStart;
+				const to = Math.min(end, nodeEnd) - nodeStart;
+				out += node.data.slice(from, to);
+			}
+			return out;
+		}
+		/** Resolve a target into a DOM Range inside its message element, or null when moved. */
+		function resolveInDom(target, root) {
+			const container = messageElementOf(target.messageId, root);
+			if (container === null) return null;
+			const text = flattenedText(container);
+			const offsets = locateOffsets(plainTextSlice(text, 0, text.total), target);
+			if (offsets === null) return null;
+			const start = nodeAtOffset(text, offsets.start);
+			const end = nodeAtOffset(text, offsets.end);
+			if (start === null || end === null) return null;
+			const range = root.createRange();
+			range.setStart(start.node, start.offset);
+			range.setEnd(end.node, end.offset);
+			return range;
+		}
+		/** The (node, offset) pair owning one flattened offset. */
+		function nodeAtOffset(text, offset) {
+			for (let i = 0; i < text.nodes.length; i += 1) {
+				const node = text.nodes[i];
+				const nodeStart = text.offsets[i];
+				if (offset <= nodeStart + node.data.length) return {
+					node,
+					offset: offset - nodeStart
+				};
+			}
+			return null;
+		}
+		/** Minimal CSS identifier escaping for attribute selectors (message ids are seqs, defensive). */
+		function cssEscape(value) {
+			return value.replace(/["\\]/g, "\\$&");
+		}
+		//#endregion
+		//#region src/client/highlight.ts
+		/**
+		* CSS Custom Highlight painting + floating pin badges for pending
+		* annotations. Repositioning is merged through requestAnimationFrame (no
+		* polling, no body observer); the pins live in ONE fixed overlay container
+		* rendered by the panel component.
+		*/
+		const HIGHLIGHT_STYLE = "dsh-annotation-2";
+		function highlightName(id) {
+			return `${HIGHLIGHT_STYLE}:${id}`;
+		}
+		function createHighlightSurface(overlay, cssHighlights) {
+			const paint = (items, root) => {
+				const located = [];
+				const seen = /* @__PURE__ */ new Set();
+				const existing = /* @__PURE__ */ new Map();
+				for (const child of Array.from(overlay.children)) {
+					const id = child.getAttribute("data-ann2-item");
+					if (id !== null) existing.set(id, child);
+				}
+				items.forEach((item, index) => {
+					seen.add(item.id);
+					const range = resolveInDom(item.target, root);
+					const pin = existing.get(item.id);
+					if (range === null) {
+						pin?.remove();
+						cssHighlights?.delete(highlightName(item.id));
+						return;
+					}
+					located.push(item);
+					cssHighlights?.set(highlightName(item.id), new Highlight(range));
+					const rect = range.getBoundingClientRect();
+					if (pin === void 0) {
+						const created = root.createElement("div");
+						created.className = "dsh-ann2-pin";
+						created.dataset.ann2Item = item.id;
+						created.textContent = String(index + 1);
+						overlay.appendChild(created);
+						return;
+					}
+					pin.style.left = `${rect.left + rect.width / 2}px`;
+					pin.style.top = `${rect.top}px`;
+					pin.style.display = rect.width === 0 ? "none" : "block";
+				});
+				for (const [id, pin] of existing) if (!seen.has(id)) {
+					pin.remove();
+					cssHighlights?.delete(highlightName(id));
+				}
+				return located;
+			};
+			const clear = () => {
+				if (cssHighlights !== void 0) {
+					for (const name of Array.from(cssHighlights.keys())) if (name.startsWith(`dsh-annotation-2:`)) cssHighlights.delete(name);
+				}
+				overlay.replaceChildren();
+			};
+			return {
+				paint,
+				clear
+			};
+		}
+		/** One merged repaint queue (rAF-coalesced; callers just schedule). */
+		var RepaintQueue = class {
+			surface;
+			getItems;
+			root;
+			queued = false;
+			constructor(surface, getItems, root) {
+				this.surface = surface;
+				this.getItems = getItems;
+				this.root = root;
+			}
+			/** Schedule one repaint; multiple schedules within a frame coalesce. */
+			schedule() {
+				if (this.queued) return;
+				this.queued = true;
+				requestAnimationFrame(() => {
+					this.queued = false;
+					this.surface.paint(this.getItems(), this.root);
+				});
+			}
+		};
+		//#endregion
+		//#region src/client/panel.tsx
+		/**
+		* The annotation panel: mounted in the conversation.composer.dock slot
+		* (the native band under the composer card). Renders the collapsible
+		* 「批注 ×N」 list, the selection float bar (「批注」 button over assistant
+		* text), the CSS-Highlight painting with rAF-merged repositioning, and the
+		* chip↔item sync (a manually deleted chip is re-inserted and the panel
+		* prompts the user to remove it from here instead).
+		*/
+		const MAX_NOTE_LENGTH = 4096;
+		function AnnotationPanel({ sessionId, actx, registry, useInput, inputActions }) {
+			const input = useInput((state) => state);
+			const draft = registry.get(sessionId);
+			const [open, setOpen] = (0, react.useState)(false);
+			const [editingId, setEditingId] = (0, react.useState)(null);
+			const [notice, setNotice] = (0, react.useState)(null);
+			const [movedIds, setMovedIds] = (0, react.useState)(/* @__PURE__ */ new Set());
+			const [float, setFloat] = (0, react.useState)(null);
+			const overlayRef = (0, react.useRef)(null);
+			const surfaceRef = (0, react.useRef)(null);
+			const queueRef = (0, react.useRef)(null);
+			const floatTargetRef = (0, react.useRef)(null);
+			const locked = input.phase === "submitting" || input.phase === "adjudicating";
+			(0, react.useEffect)(() => {
+				const overlay = overlayRef.current;
+				if (overlay === null) return;
+				if (surfaceRef.current === null) {
+					const surface = createHighlightSurface(overlay, typeof CSS !== "undefined" && "highlights" in CSS ? CSS.highlights : void 0);
+					surfaceRef.current = surface;
+					queueRef.current = new RepaintQueue(surface, () => registry.get(sessionId).items, document);
+				}
+				const repaint = () => {
+					const located = queueRef.current === null ? surfaceRef.current.paint(registry.get(sessionId).items, document) : surfaceRef.current.paint(registry.get(sessionId).items, document);
+					const next = new Set(registry.get(sessionId).items.map((item) => item.id).filter((id) => !located.some((l) => l.id === id)));
+					setMovedIds((current) => {
+						if (current.size === next.size && [...current].every((id) => next.has(id))) return current;
+						return next;
+					});
+				};
+				repaint();
+				return () => {
+					surfaceRef.current?.clear();
+				};
+			}, [
+				sessionId,
+				registry,
+				input,
+				draft.items
+			]);
+			(0, react.useEffect)(() => {
+				const schedule = () => {
+					queueRef.current?.schedule();
+				};
+				document.addEventListener("scroll", schedule, {
+					capture: true,
+					passive: true
+				});
+				window.addEventListener("resize", schedule);
+				return () => {
+					document.removeEventListener("scroll", schedule, { capture: true });
+					window.removeEventListener("resize", schedule);
+				};
+			}, []);
+			(0, react.useEffect)(() => {
+				if (locked || actx === void 0) return;
+				const present = new Set(input.occurrences.filter((o) => o.source === SOURCE).map((o) => o.ref));
+				const missing = draft.items.filter((item) => !present.has(item.id));
+				if (missing.length === 0) return;
+				for (const item of missing) {
+					const { reference, span } = chipInsert(item, draft.items.indexOf(item), input.draft.length, input.draftRev);
+					actx.bail(actx, "slash/input-insert-reference", {
+						reference,
+						span
+					});
+				}
+				setNotice(missing.length > 0 ? `已恢复 ${missing.length} 条被删除的批注引用；如需移除请从批注面板清除` : null);
+			}, [
+				actx,
+				input.draft,
+				input.draftRev,
+				input.occurrences,
+				input.phase,
+				locked,
+				draft.items
+			]);
+			(0, react.useEffect)(() => {
+				let frame = 0;
+				const onSelectionChange = () => {
+					cancelAnimationFrame(frame);
+					frame = requestAnimationFrame(() => {
+						const selection = document.getSelection();
+						if (selection === null || selection.rangeCount === 0 || selection.isCollapsed) {
+							setFloat(null);
+							floatTargetRef.current = null;
+							return;
+						}
+						const target = extractTarget(selection, document);
+						if (target === null) {
+							setFloat(null);
+							floatTargetRef.current = null;
+							return;
+						}
+						const rect = selection.getRangeAt(0).getBoundingClientRect();
+						floatTargetRef.current = target;
+						setFloat({
+							x: rect.left + rect.width / 2,
+							y: rect.top
+						});
+					});
+				};
+				document.addEventListener("selectionchange", onSelectionChange);
+				return () => {
+					document.removeEventListener("selectionchange", onSelectionChange);
+					cancelAnimationFrame(frame);
+				};
+			}, []);
+			const annotate = () => {
+				const target = floatTargetRef.current;
+				if (target === null) return;
+				const item = registry.add(sessionId, target, "");
+				if (item === null) {
+					setNotice("批注已达上限（32 条）");
+					return;
+				}
+				const { reference, span } = chipInsert(item, draft.items.indexOf(item), input.draft.length, input.draftRev);
+				actx?.bail(actx, "slash/input-insert-reference", {
+					reference,
+					span
+				});
+				document.getSelection()?.removeAllRanges();
+				setFloat(null);
+				floatTargetRef.current = null;
+				setOpen(true);
+				setNotice(null);
+			};
+			const removeItem = (id) => {
+				registry.remove(sessionId, id);
+				const occurrence = input.occurrences.find((o) => o.source === "annotation" && o.ref === id);
+				if (occurrence !== void 0 && inputActions !== void 0) inputActions.setDraft(input.draft.slice(0, occurrence.offset) + input.draft.slice(occurrence.offset + 1));
+				if (editingId === id) setEditingId(null);
+			};
+			const clearAll = () => {
+				registry.clear(sessionId);
+				const occurrences = input.occurrences.filter((o) => o.source === SOURCE);
+				if (occurrences.length > 0 && inputActions !== void 0) {
+					let next = input.draft;
+					for (let i = occurrences.length - 1; i >= 0; i -= 1) {
+						const offset = occurrences[i].offset;
+						next = next.slice(0, offset) + next.slice(offset + 1);
+					}
+					inputActions.setDraft(next);
+				}
+				setEditingId(null);
+			};
+			if (draft.items.length === 0) return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+				ref: overlayRef,
+				className: "dsh-ann2-overlay",
+				"data-dsh-annotation-2": true
+			}), float !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+				className: "dsh-ann2-floatbar",
+				"data-dsh-annotation-2": true,
+				style: {
+					left: float.x,
+					top: float.y
+				},
+				children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+					type: "button",
+					onClick: annotate,
+					children: "批注"
+				})
+			})] });
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+				"data-dsh-annotation-2": true,
+				className: "dsh-ann2-panel",
+				children: [
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+						ref: overlayRef,
+						className: "dsh-ann2-overlay"
+					}),
+					float !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+						className: "dsh-ann2-floatbar",
+						style: {
+							left: float.x,
+							top: float.y
+						},
+						children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+							type: "button",
+							onClick: annotate,
+							children: "批注"
+						})
+					}),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
+						type: "button",
+						className: "dsh-ann2-panel-row",
+						"data-expanded": open || void 0,
+						onClick: () => {
+							setOpen((value) => !value);
+						},
+						"aria-expanded": open,
+						children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+							className: "dsh-ann2-count",
+							children: draft.items.length
+						}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: "批注" })]
+					}),
+					open && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+						className: "dsh-ann2-body",
+						children: [
+							notice !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+								className: "dsh-ann2-moved",
+								children: notice
+							}),
+							draft.items.map((item, index) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)(AnnotationItemRow, {
+								item,
+								index,
+								moved: movedIds.has(item.id),
+								locked,
+								editing: editingId === item.id,
+								onEdit: () => {
+									setEditingId(item.id);
+								},
+								onSave: (note) => {
+									registry.update(sessionId, item.id, note.slice(0, MAX_NOTE_LENGTH));
+									setEditingId(null);
+								},
+								onCancel: () => {
+									setEditingId(null);
+								},
+								onRemove: () => {
+									removeItem(item.id);
+								}
+							}, item.id)),
+							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+								style: {
+									display: "flex",
+									justifyContent: "flex-end",
+									marginTop: 4
+								},
+								children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+									type: "button",
+									className: "dsh-ann2-btn",
+									onClick: clearAll,
+									disabled: locked,
+									children: "清空批注"
+								})
+							})
+						]
+					})
+				]
+			});
+		}
+		function AnnotationItemRow({ item, index, moved, locked, editing, onEdit, onSave, onCancel, onRemove }) {
+			const [value, setValue] = (0, react.useState)(item.note);
+			if (editing) return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+				className: "dsh-ann2-item",
+				"data-dsh-annotation-2": true,
+				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+					className: "dsh-ann2-badge",
+					children: index + 1
+				}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("textarea", {
+					className: "dsh-ann2-editor",
+					value,
+					rows: 3,
+					autoFocus: true,
+					onChange: (event) => {
+						setValue(event.target.value);
+					},
+					onKeyDown: (event) => {
+						if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+							event.preventDefault();
+							onSave(value);
+						} else if (event.key === "Escape") {
+							event.preventDefault();
+							onCancel();
+						}
+					}
+				}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+					className: "dsh-ann2-actions",
+					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+						type: "button",
+						className: "dsh-ann2-btn",
+						"data-primary": true,
+						onClick: () => {
+							onSave(value);
+						},
+						children: "保存"
+					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+						type: "button",
+						className: "dsh-ann2-btn",
+						onClick: onCancel,
+						children: "取消"
+					})]
+				})] })]
+			});
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+				className: "dsh-ann2-item",
+				"data-dsh-annotation-2": true,
+				children: [
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+						className: "dsh-ann2-badge",
+						children: index + 1
+					}),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", { children: [
+						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+							className: "dsh-ann2-quote",
+							title: item.target.exact,
+							children: item.target.exact
+						}),
+						item.note === "" ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+							className: "dsh-ann2-note",
+							"data-empty": true,
+							children: "（未填写）"
+						}) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+							className: "dsh-ann2-note",
+							children: item.note
+						}),
+						moved && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+							className: "dsh-ann2-moved",
+							children: "原文位置已变化（引用和批注仍可发送）"
+						})
+					] }),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+						className: "dsh-ann2-toolbar",
+						children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+							type: "button",
+							className: "dsh-ann2-tool",
+							disabled: locked,
+							onClick: onEdit,
+							title: "编辑批注",
+							children: "编辑"
+						}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+							type: "button",
+							className: "dsh-ann2-tool",
+							disabled: locked,
+							onClick: onRemove,
+							title: "删除批注",
+							children: "删除"
+						})]
+					})
+				]
+			});
+		}
+		//#endregion
+		//#region src/client/session-registry.ts
+		/**
+		* Per-session annotation registry: in-memory drafts backed by localStorage,
+		* with mutations always persisted (best-effort). One registry per plugin
+		* apply; sessions materialize their draft on first access.
+		*/
+		function createSessionRegistry(storage) {
+			const drafts = /* @__PURE__ */ new Map();
+			const get = (sessionId) => {
+				const existing = drafts.get(sessionId);
+				if (existing !== void 0) return existing;
+				const restored = loadDraft(sessionId, storage);
+				drafts.set(sessionId, restored);
+				return restored;
+			};
+			const apply = (sessionId, mutation) => {
+				drafts.set(sessionId, mutation.draft);
+				saveDraft(sessionId, mutation.draft, storage);
+				return mutation.draft;
+			};
+			return {
+				get,
+				add(sessionId, target, note) {
+					const draft = get(sessionId);
+					const item = {
+						id: crypto.randomUUID(),
+						target,
+						note
+					};
+					const mutation = addItem(draft, item);
+					if (mutation === null) return null;
+					apply(sessionId, mutation);
+					return item;
+				},
+				update(sessionId, id, note) {
+					apply(sessionId, updateNote(get(sessionId), id, note));
+				},
+				remove(sessionId, id) {
+					apply(sessionId, removeItems(get(sessionId), [id]));
+				},
+				commit(sessionId, ids) {
+					apply(sessionId, removeItems(get(sessionId), ids));
+				},
+				clear(sessionId) {
+					apply(sessionId, clearItems(get(sessionId)));
+				}
+			};
+		}
+		//#endregion
+		//#region src/client/styles.ts
+		/**
+		* Plugin-owned styles, injected once at apply time. Scoped with a unique
+		* prefix so hot reloads never double-apply (the tag is idempotent).
+		*/
+		const STYLE_ID = "dsh-annotation-2-style";
+		const STYLE_TEXT = `
+[data-dsh-annotation-2] { all: initial; }
+[data-dsh-annotation-2] *, [data-dsh-annotation-2] *::before, [data-dsh-annotation-2] *::after { box-sizing: border-box; }
+.dsh-ann2-panel { font-family: var(--dsw-font-family, system-ui); font-size: 12px; line-height: 1.5; }
+.dsh-ann2-panel-row { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 8px; cursor: pointer; }
+.dsh-ann2-panel-row:hover { background: color-mix(in srgb, var(--dsw-alias-fill-hover, #3a3a3c) 60%, transparent); }
+.dsh-ann2-panel-row[data-expanded] { background: color-mix(in srgb, var(--dsw-alias-fill-hover, #3a3a3c) 60%, transparent); }
+.dsh-ann2-count { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; font-size: 11px; font-weight: 600; color: #fff; background: var(--dsw-alias-accent, #5e9eff); }
+.dsh-ann2-body { padding: 2px 8px 8px 26px; }
+.dsh-ann2-item { display: grid; grid-template-columns: auto 1fr auto; gap: 6px 8px; align-items: start; padding: 6px 8px; border-radius: 8px; }
+.dsh-ann2-item:hover { background: color-mix(in srgb, var(--dsw-alias-fill-hover, #3a3a3c) 50%, transparent); }
+.dsh-ann2-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; font-size: 10px; font-weight: 600; color: #fff; background: var(--dsw-alias-accent, #5e9eff); }
+.dsh-ann2-quote { color: var(--dsw-alias-text-secondary, #999); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dsh-ann2-note { white-space: pre-wrap; word-break: break-word; }
+.dsh-ann2-note[data-empty] { color: var(--dsw-alias-text-tertiary, #666); font-style: italic; }
+.dsh-ann2-moved { color: var(--dsw-alias-danger, #ff6b6b); font-size: 11px; }
+.dsh-ann2-toolbar { display: flex; gap: 4px; }
+.dsh-ann2-tool { border: none; background: transparent; color: var(--dsw-alias-text-secondary, #999); font-size: 12px; padding: 2px 6px; border-radius: 6px; cursor: pointer; }
+.dsh-ann2-tool:hover { background: color-mix(in srgb, var(--dsw-alias-fill-hover, #3a3a3c) 60%, transparent); color: var(--dsw-alias-text-primary, #eee); }
+.dsh-ann2-editor { width: 100%; min-height: 48px; resize: vertical; background: var(--dsw-alias-fill-input, #1c1c1e); color: var(--dsw-alias-text-primary, #eee); border: 1px solid var(--dsw-alias-border, #3a3a3c); border-radius: 8px; padding: 6px 8px; font: inherit; font-size: 12px; }
+.dsh-ann2-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px; }
+.dsh-ann2-btn { border: 1px solid var(--dsw-alias-border, #3a3a3c); background: transparent; color: var(--dsw-alias-text-primary, #eee); border-radius: 8px; padding: 2px 10px; font-size: 12px; cursor: pointer; }
+.dsh-ann2-btn:hover { background: color-mix(in srgb, var(--dsw-alias-fill-hover, #3a3a3c) 60%, transparent); }
+.dsh-ann2-btn[data-primary] { background: var(--dsw-alias-accent, #5e9eff); border-color: transparent; color: #fff; }
+.dsh-ann2-floatbar { position: fixed; z-index: 1200; display: flex; align-items: center; gap: 4px; padding: 4px; border-radius: 10px; border: 1px solid var(--dsw-alias-border-inverted, #555); background: var(--dsw-specific-menu, #2c2c2e); box-shadow: var(--dsw-shadow-lv3, 0 4px 16px rgba(0,0,0,.4)); font-family: var(--dsw-font-family, system-ui); }
+.dsh-ann2-floatbar button { border: none; background: transparent; color: var(--dsw-alias-text-primary, #eee); font-size: 12px; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
+.dsh-ann2-floatbar button:hover { background: color-mix(in srgb, var(--dsw-alias-fill-hover, #3a3a3c) 60%, transparent); }
+.dsh-ann2-overlay { position: fixed; z-index: 1199; pointer-events: none; }
+.dsh-ann2-pin { position: absolute; transform: translate(-50%, -100%); display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; font-size: 10px; font-weight: 600; color: #fff; background: var(--dsw-alias-accent, #5e9eff); pointer-events: auto; cursor: pointer; }
+.dsh-ann2-chip-label { font-size: 10px; color: var(--dsw-alias-accent, #5e9eff); }
+`;
+		/** Inject the stylesheet once; returns the tag (no-op on re-entry). */
+		function ensureStyles(root) {
+			if (root.getElementById("dsh-annotation-2-style") !== null) return;
+			const style = root.createElement("style");
+			style.id = STYLE_ID;
+			style.textContent = STYLE_TEXT;
+			root.head.appendChild(style);
+		}
+		//#endregion
+		//#region src/client/index.tsx
+		/** Required services: session scopes, the slash roster, and the slot ledger. */
+		const inject = [
+			"sessions",
+			"slash",
+			"slots"
+		];
+		function apply(ctx) {
+			ensureStyles(document);
+			const registry = createSessionRegistry(localStorage);
+			const source = createAnnotationSource(registry);
+			ctx.effect(() => {
+				const slash = ctx.get("slash");
+				if (slash === void 0) return () => {};
+				const dispose = slash.registerSource(source);
+				return () => {
+					dispose();
+				};
+			}, "dsh-annotation: @ source");
+			ctx.inject(["slots", "sessions"], (scope) => {
+				const sessions = scope.sessions;
+				scope.slots.inject("conversation.composer.dock", () => scope.slots.register({
+					name: "conversation.composer.dock",
+					id: "dsh-annotation-2",
+					order: 100,
+					inject: (sessionId) => {
+						return {
+							sessionId: String(sessionId),
+							actx: sessions.scope(sessionId),
+							registry
+						};
+					}
+				}, AnnotationPanel));
+			});
+		}
+		//#endregion
+		exports.apply = apply;
+		exports.inject = inject;
+		return module.exports;
+	}
+});
+
+//# sourceMappingURL=client.js.map
