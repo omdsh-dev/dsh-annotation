@@ -1124,11 +1124,17 @@ window.__ModuleLoader__.load({
 
       // 批注保存/删除完成后把焦点还给 composer 输入框（光标在末尾），
       // 用户可直接回车发送，无需再点一下输入框。
+      // preventScroll：长会话中选中文字时输入框可能在视口外，默认 focus
+      // 会强制滚动页面（视觉上"卡一下"）；延迟一帧让卡片关闭动画先完成，
+      // 焦点回归更平滑。
       function focusComposer() {
         var ta = document.querySelector('[data-composer-card] textarea')
         if (!(ta instanceof HTMLTextAreaElement) || ta.disabled) return
-        ta.focus()
-        ta.setSelectionRange(ta.value.length, ta.value.length)
+        requestAnimationFrame(function () {
+          if (!ta.isConnected) return
+          ta.focus({ preventScroll: true })
+          ta.setSelectionRange(ta.value.length, ta.value.length)
+        })
       }
 
       function saveAnnotation() {
