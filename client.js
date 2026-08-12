@@ -616,16 +616,27 @@ window.__ModuleLoader__.load({
 				if (rebuildRanRef.current || locked || actx === void 0) return;
 				const present = new Set(input.occurrences.filter((o) => o.source === SOURCE).map((o) => o.ref));
 				const missing = draft.items.filter((item) => !present.has(item.id));
-				rebuildRanRef.current = true;
-				if (missing.length === 0) return;
-				if (!registry.shouldRebuildChips(sessionId)) return;
+				if (missing.length === 0) {
+					rebuildRanRef.current = true;
+					return;
+				}
+				if (!registry.shouldRebuildChips(sessionId)) {
+					rebuildRanRef.current = true;
+					return;
+				}
+				if (input.draft.includes("￼")) {
+					inputActions?.setDraft(input.draft.replace(/\uFFFC/g, ""));
+					return;
+				}
+				let allOk = true;
 				for (const item of missing) {
 					const { reference, span } = chipInsert(item, draft.items.indexOf(item), input.draft.length, input.draftRev);
-					actx.bail(actx, "slash/input-insert-reference", {
+					if (!actx.bail(actx, "slash/input-insert-reference", {
 						reference,
 						span
-					});
+					})) allOk = false;
 				}
+				if (allOk) rebuildRanRef.current = true;
 			}, [
 				actx,
 				input.draft,

@@ -19,7 +19,7 @@
   ],
   "scripts": {
     "build": "tsdown",
-    "check": "tsc -p tsconfig.json --noEmit && node --check lib/index.js && node --check client.js",
+    "check": "tsc -p tsconfig.json --noEmit && node --check lib/index.mjs && node --check client.js",
     "test": "vitest run",
     "links": "node scripts/link-dsh.mjs"
   },

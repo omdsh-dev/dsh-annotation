@@ -187,25 +187,43 @@ export function AnnotationPanel(props: AnnotationPanelProps) {
 
   // Refresh rebuild: chips live only in the draft mirror (clipboard
   // projection is empty), so after a reload they are gone. Rebuild them ONLY
-  // on the first effect evaluation after mount (the refresh scenario) when
-  // the draft fingerprint still matches the persisted one. Chips cleared by
-  // a real send, or deleted inside the live session, are never auto-restored
-  // — the user re-attaches from the panel.
+  // on the first successful evaluable pass after mount (the refresh scenario)
+  // when the draft fingerprint still matches the persisted one. A bail that
+  // returns falsy means the session shell was not yet listening (first mount
+  // pass) or the span CAS failed — the gate stays OPEN and a later pass
+  // (draft restore advancing the rev) retries. Chips cleared by a real send,
+  // or deleted inside the live session, are never auto-restored — the user
+  // re-attaches from the panel.
   useEffect(() => {
-    if (rebuildRanRef.current || locked || actx === undefined) return
+    if (rebuildRanRef.current || locked || actx === undefined) {
+      return
+    }
     const present = new Set(input.occurrences.filter(o => o.source === SOURCE).map(o => o.ref))
     const missing = draft.items.filter(item => !present.has(item.id))
-    // The one-shot gate closes once the FIRST evaluable pass (actx present)
-    // has decided — whether it rebuilt or not. Passes that ran before the
-    // session scope was available do NOT close it.
-    rebuildRanRef.current = true
-    if (missing.length === 0) return
-    if (!registry.shouldRebuildChips(sessionId)) return
+    if (missing.length === 0) {
+      rebuildRanRef.current = true
+      return
+    }
+    const shouldRebuild = registry.shouldRebuildChips(sessionId)
+    if (!shouldRebuild) {
+      rebuildRanRef.current = true
+      return
+    }
+    // The restore path replays the persisted draft TEXT, which still holds the
+    // raw placeholder (U+FFFC) but no occurrence records — strip those orphan
+    // placeholders first (rev advances, the effect re-runs, then we insert).
+    if (input.draft.includes('\uFFFC')) {
+      inputActions?.setDraft(input.draft.replace(/\uFFFC/g, ''))
+      return
+    }
+    let allOk = true
     for (const item of missing) {
       const index = draft.items.indexOf(item)
       const { reference, span } = chipInsert(item, index, input.draft.length, input.draftRev)
-      actx.bail(actx, 'slash/input-insert-reference', { reference, span })
+      const ok = actx.bail(actx, 'slash/input-insert-reference', { reference, span })
+      if (!ok) allOk = false
     }
+    if (allOk) rebuildRanRef.current = true
   }, [actx, input.draft, input.draftRev, input.occurrences, input.phase, locked, draft.items, registry, sessionId])
 
   // Selection float bar: annotate button over assistant text.
