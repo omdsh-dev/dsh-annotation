@@ -9,7 +9,9 @@
  * package names through the loader module table at runtime.
  *
  * The DSH checkout is located via $DSH_SOURCE, falling back to the machine's
- * staging snapshot, then the annotation worktree.
+ * STOCK 0811 staging snapshot (4212975). The modified ann2-worktree is
+ * deliberately NOT a candidate: this plugin must compile against the
+ * unmodified DSH surface only.
  *
  * Run after `pnpm install` (pnpm rewrites node_modules). Never committed:
  * node_modules is gitignored.
@@ -20,7 +22,6 @@ import { fileURLToPath } from 'node:url'
 
 const candidates = [
   process.env.DSH_SOURCE,
-  '/Users/changfenhuang/.dsh/source/ann2-worktree',
   '/Users/changfenhuang/.dsh/source/staging-20260811T152241Z',
 ].filter(Boolean)
 
@@ -37,6 +38,8 @@ const LINKS = {
   '@deepseek-ai/dsh-client-ui-slots': 'packages/client/ui-slots',
   '@deepseek-ai/dsh-client-web-react': 'packages/client/web-react',
   '@deepseek-ai/dsh-host-apiproxy': 'packages/host/apiproxy',
+  '@deepseek-ai/dsh-llm': 'packages/llm/llm',
+  '@deepseek-ai/dsh-session': 'packages/core/session',
 }
 
 if (checkout === undefined) {

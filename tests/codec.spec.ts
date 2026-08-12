@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { chipInsert, createAnnotationSource, noticeText, SOURCE } from '../src/client/codec.ts'
+import { chipInsert, createAnnotationSource, SOURCE } from '../src/client/codec.ts'
 import { createSessionRegistry } from '../src/client/session-registry.ts'
-import { emptyDraft } from '../src/client/store.ts'
-import type { AnnotationItemV1 } from '../src/client/types.ts'
+import { ENVELOPE_OPEN, ENVELOPE_CLOSE, parseEnvelopes } from '../src/shared/envelope.ts'
 
 function memoryStorage() {
   const map = new Map<string, string>()
@@ -13,97 +12,95 @@ function memoryStorage() {
   }
 }
 
-const TARGET = { messageId: '42', start: 0, end: 4, exact: '原文片段', prefix: '前文', suffix: '后文' }
+const TARGET = { messageId: 'k-42', start: 0, end: 4, exact: '原文片段', prefix: '前文', suffix: '后文' }
 
-describe('annotation source codec', () => {
-  it('serializes pending refs into ONE context part sharing the draft batch id', async () => {
+describe('annotation source codec (stock 0811 signature)', () => {
+  it('serializes a pending ref into ONE strict envelope via the global id index', async () => {
     const registry = createSessionRegistry(memoryStorage())
-    const a = registry.add('s', TARGET, '第一处批注')!
-    const b = registry.add('s', TARGET, '第二处批注')!
+    const item = registry.add('s', TARGET, '第一处批注')!
     const source = createAnnotationSource(registry)
-    const first = await source.codec!.serialize({ sessionId: 's' as never }, a.id, new AbortController().signal)
-    const second = await source.codec!.serialize({ sessionId: 's' as never }, b.id, new AbortController().signal)
-    expect(first.kind).toBe('context')
-    expect(second.kind).toBe('context')
-    if (first.kind !== 'context' || second.kind !== 'context') throw new Error('unreachable')
-    expect(first.batchId).toBe(second.batchId)
-    expect(first.batchId).toBe(registry.get('s').batchId)
-    expect(first.text).toContain('原文片段')
-    expect(first.text).toContain('第一处批注')
-    expect(second.text).toContain('第二处批注')
+    const text = await source.codec!.serialize(item.id, new AbortController().signal)
+    expect(text.startsWith(ENVELOPE_OPEN)).toBe(true)
+    expect(text.endsWith(ENVELOPE_CLOSE)).toBe(true)
+    const parsed = parseEnvelopes(text)
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) throw new Error('unreachable')
+    expect(parsed.envelopes[0]).toMatchObject({ version: 1, id: item.id, quote: '原文片段', note: '第一处批注' })
   })
 
-  it('clipboard projects to empty (annotation protocol never enters the draft projection)', () => {
+  it('clipboard projects to empty (envelope protocol never enters copy projections)', () => {
     const registry = createSessionRegistry(memoryStorage())
     const source = createAnnotationSource(registry)
     expect(source.codec!.clipboardText('any')).toBe('')
   })
 
-  it('an unknown ref rejects (never silently downgrades)', async () => {
+  it('an unknown ref rejects (never silently fabricates an envelope)', async () => {
     const registry = createSessionRegistry(memoryStorage())
     const source = createAnnotationSource(registry)
-    await expect(
-      source.codec!.serialize({ sessionId: 's' as never }, 'missing', new AbortController().signal),
-    ).rejects.toThrow(/no longer pending/)
+    await expect(source.codec!.serialize('missing', new AbortController().signal)).rejects.toThrow(/no longer pending/)
   })
 
-  it('committed retires exactly the sent item; the batch id changes', async () => {
+  it('an aborted signal rejects the serialization', async () => {
     const registry = createSessionRegistry(memoryStorage())
-    registry.add('s', TARGET, 'n1')
-    const sent = registry.add('s', TARGET, 'n2')!
-    const before = registry.get('s').batchId
+    const item = registry.add('s', TARGET, 'n')!
     const source = createAnnotationSource(registry)
-    source.codec!.committed?.({ sessionId: 's' as never }, sent.id)
-    expect(registry.get('s').items.map(i => i.id)).toEqual([expect.not.stringMatching(sent.id)])
-    expect(registry.get('s').batchId).not.toBe(before)
+    const controller = new AbortController()
+    controller.abort()
+    await expect(source.codec!.serialize(item.id, controller.signal)).rejects.toThrow()
   })
 
-  it('committed for an unknown id is a no-op', () => {
+  it('items removed from any session resolve nowhere (global index stays consistent)', async () => {
     const registry = createSessionRegistry(memoryStorage())
-    registry.add('s', TARGET, 'n1')
+    const item = registry.add('s', TARGET, 'n')!
+    registry.remove('s', item.id)
     const source = createAnnotationSource(registry)
-    source.codec!.committed?.({ sessionId: 's' as never }, 'missing')
-    expect(registry.get('s').items).toHaveLength(1)
+    await expect(source.codec!.serialize(item.id, new AbortController().signal)).rejects.toThrow(/no longer pending/)
   })
 })
 
 describe('chip insertion', () => {
   it('inserts at the draft tail with the current revision; label carries the ordinal', () => {
-    const item: AnnotationItemV1 = { id: 'i-1', target: TARGET, note: '' }
+    const item = registryItem('i-1')
     const { reference, span } = chipInsert(item, 0, 12, 7)
     expect(reference).toMatchObject({ source: SOURCE, ref: 'i-1', label: '批注 1', clipboardText: '' })
     expect(span).toEqual({ start: 12, end: 12, draftRev: 7 })
   })
 })
 
-describe('notice text', () => {
-  it('is readable markdown quoting the anchor and the note; empty notes are explicit', () => {
-    const item: AnnotationItemV1 = { id: 'i', target: TARGET, note: '批注内容' }
-    const text = noticeText(item, 3)
-    expect(text).toContain('> 引用：原文片段')
-    expect(text).toContain('第 3 处')
-    expect(text).toContain('批注：批注内容')
-    expect(noticeText({ ...item, note: '' }, 1)).toContain('（未填写）')
+describe('registry lifecycle', () => {
+  it('states transition through the registry; fingerprint tracks the chip set', () => {
+    const registry = createSessionRegistry(memoryStorage())
+    const item = registry.add('s', TARGET, 'n')!
+    expect(registry.get('s').items[0]!.state).toBe('attached')
+    registry.setState('s', item.id, 'submitted')
+    expect(registry.get('s').items[0]!.state).toBe('submitted')
+    registry.setState('s', item.id, 'failed')
+    expect(registry.get('s').items[0]!.state).toBe('failed')
+    const fp1 = registry.fingerprint('s')
+    registry.add('s', TARGET, 'n2')
+    expect(registry.fingerprint('s')).not.toBe(fp1)
+  })
+
+  it('shouldRebuildChips matches only an unchanged item set', () => {
+    const registry = createSessionRegistry(memoryStorage())
+    registry.add('s', TARGET, 'n')
+    registry.setFingerprint('s', registry.fingerprint('s'))
+    expect(registry.shouldRebuildChips('s')).toBe(true)
+    registry.add('s', TARGET, 'n2')
+    expect(registry.shouldRebuildChips('s')).toBe(false)
+  })
+
+  it('removeItems drops exactly the listed ids (the landed-cleanup path)', () => {
+    const registry = createSessionRegistry(memoryStorage())
+    registry.add('s', TARGET, 'a')
+    registry.add('s', TARGET, 'b')
+    registry.add('s', TARGET, 'c')
+    const ids = registry.get('s').items.map(i => i.id)
+    registry.removeItems('s', [ids[0]!, ids[2]!])
+    expect(registry.get('s').items.map(i => i.id)).toEqual([ids[1]])
   })
 })
 
-describe('registry persistence round-trip', () => {
-  it('a session draft survives a registry rebuild (refresh simulation)', () => {
-    const storage = memoryStorage()
-    const first = createSessionRegistry(storage)
-    const item = first.add('sess-x', TARGET, '持久批注')!
-    const rebuilt = createSessionRegistry(storage)
-    expect(rebuilt.get('sess-x').items).toHaveLength(1)
-    expect(rebuilt.get('sess-x').items[0]!.id).toBe(item.id)
-    expect(rebuilt.get('sess-x').batchId).toBe(first.get('sess-x').batchId)
-  })
-
-  it('clearing removes the persisted key (empty drafts are not stored)', () => {
-    const storage = memoryStorage()
-    const registry = createSessionRegistry(storage)
-    registry.add('s', TARGET, 'x')
-    registry.clear('s')
-    expect(storage.getItem('dsh-annotation:draft:v1:s')).toBeNull()
-    expect(registry.get('s')).toEqual(emptyDraft())
-  })
-})
+function registryItem(id: string) {
+  return { id, target: TARGET, note: '', state: 'attached' as const }
+}

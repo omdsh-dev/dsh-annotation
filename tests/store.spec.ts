@@ -10,6 +10,7 @@ function item(id: string, over: Partial<AnnotationItemV1> = {}): AnnotationItemV
     id,
     target: { messageId: '42', start: 0, end: 4, exact: '原文', prefix: '', suffix: '' },
     note: '',
+    state: 'attached',
     ...over,
   }
 }

@@ -3,15 +3,15 @@
   "version": "2.0.0-internal.1",
   "private": true,
   "type": "module",
-  "description": "DSH 内部批注插件 2.0（内部开发版）：结构化批注上下文经 DSH 原生原子提交通道随问题发送，历史呈现为原生 ContextMessage（form: notice）。仅限私有仓库/私有 PR 交付，禁止发布。",
-  "main": "index.mjs",
+  "description": "DSH 批注插件 2.0（纯插件内部版）：选中助手文字批注（可留空）→ 原生输入引用芯片 → 插件 Node half 在 agent/pre-step 拆成原生折叠上下文 + 干净问题。DSH 0811 本体 0 改动。仅限私有仓库/私有 PR 交付，禁止发布。",
+  "main": "lib/index.mjs",
   "exports": {
-    ".": "./index.mjs",
+    ".": "./lib/index.mjs",
     "./client": "./client.js",
     "./package.json": "./package.json"
   },
   "files": [
-    "index.mjs",
+    "lib",
     "client.js",
     "cordis.patch.yml",
     "README.md",
@@ -19,7 +19,7 @@
   ],
   "scripts": {
     "build": "tsdown",
-    "check": "tsc -p tsconfig.json --noEmit && node --check index.mjs && node --check client.js",
+    "check": "tsc -p tsconfig.json --noEmit && node --check lib/index.js && node --check client.js",
     "test": "vitest run",
     "links": "node scripts/link-dsh.mjs"
   },

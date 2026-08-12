@@ -26,7 +26,25 @@ export interface AnnotationItemV1 {
   target: AnnotationTargetV1
   /** Readable markdown note; may be empty (= mark-only annotation). */
   note: string
+  /** Delivery lifecycle state (see store.ts transitions). */
+  state: AnnotationStateV1
 }
+
+/**
+ * Delivery lifecycle. The plugin observes the native input and session
+ * surfaces only (no DSH callbacks exist): chips vanishing from the draft is
+ * 'submitted' (optimistic), the queue carrying the envelope is 'queued',
+ * history carrying the native context row is 'landed' (the item is cleared),
+ * a restored draft (send failure re-injection) is 'failed', and a queue edit
+ * that dropped the envelope is 'unknown' (never auto-resend).
+ */
+export type AnnotationStateV1 =
+  | 'attached'
+  | 'submitted'
+  | 'queued'
+  | 'landed'
+  | 'failed'
+  | 'unknown'
 
 /** Per-session pending (unsent) annotation batch, persisted per session. */
 export interface AnnotationDraftStateV1 {

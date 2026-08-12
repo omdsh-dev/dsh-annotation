@@ -6,20 +6,22 @@ window.__ModuleLoader__.load({
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 		let react = require("react");
 		let react_jsx_runtime = require("react/jsx-runtime");
+		//#region src/shared/envelope.ts
+		const ENVELOPE_TAG = "dsh-annotation-v1";
+		const ENVELOPE_OPEN = `<${ENVELOPE_TAG}>`;
+		const ENVELOPE_CLOSE = `</${ENVELOPE_TAG}>`;
+		/** Escape `<` inside JSON so `</dsh-annotation-v1>` can never be forged. */
+		function encodeEnvelope(payload) {
+			const json = JSON.stringify(payload).replace(/</g, "\\u003c");
+			return `${ENVELOPE_OPEN}${json}${ENVELOPE_CLOSE}`;
+		}
+		//#endregion
 		//#region src/client/codec.ts
 		/** The source name (serializer routing key for annotation occurrences). */
 		const SOURCE = "annotation";
 		/** The model-facing label prefix inside chip rendering. */
 		function chipLabel(index) {
 			return `批注 ${index + 1}`;
-		}
-		/** One notice's readable markdown body: quote, source index, and the note. */
-		function noticeText(item, index) {
-			return [
-				`> 引用：${item.target.exact}`,
-				`来源：消息 ${item.target.messageId}，第 ${index} 处`,
-				`批注：${item.note === "" ? "（未填写）" : item.note}`
-			].join("\n");
 		}
 		function createAnnotationSource(registry) {
 			return {
@@ -29,20 +31,20 @@ window.__ModuleLoader__.load({
 				onPick: () => void 0,
 				codec: {
 					clipboardText: () => "",
-					serialize(session, ref) {
-						const draft = registry.get(session.sessionId);
-						const index = draft.items.findIndex((item) => item.id === ref);
-						if (index < 0) return Promise.reject(/* @__PURE__ */ new Error(`annotation "${ref}" is no longer pending in this session`));
-						const item = draft.items[index];
-						return Promise.resolve({
-							kind: "context",
-							batchId: draft.batchId,
-							summary: `批注 ${index + 1}`,
-							text: noticeText(item, index + 1)
-						});
-					},
-					committed(session, ref) {
-						registry.commit(session.sessionId, [ref]);
+					serialize(ref, signal) {
+						try {
+							const item = registry.find(ref);
+							if (item === void 0) return Promise.reject(/* @__PURE__ */ new Error(`annotation "${ref}" is no longer pending in any session`));
+							signal.throwIfAborted();
+							return Promise.resolve(encodeEnvelope({
+								version: 1,
+								id: item.id,
+								quote: item.target.exact,
+								note: item.note
+							}));
+						} catch (error) {
+							return Promise.reject(error);
+						}
 					}
 				}
 			};
@@ -112,10 +114,14 @@ window.__ModuleLoader__.load({
 			try {
 				const parsed = JSON.parse(raw);
 				if (!isDraftState(parsed)) return emptyDraft();
+				const items = parsed.items.map((item) => ({
+					...item,
+					state: item.state ?? "attached"
+				}));
 				return {
 					version: 1,
-					batchId: deriveBatchId(parsed.items),
-					items: parsed.items
+					batchId: deriveBatchId(items),
+					items
 				};
 			} catch {
 				return emptyDraft();
@@ -230,6 +236,8 @@ window.__ModuleLoader__.load({
 		}
 		//#endregion
 		//#region src/client/anchor.ts
+		/** The stock chat-node attribute carrying the stable node key. */
+		const ANCHOR_KEY_ATTR = "data-chat-anchor-key";
 		/** Anchor re-location over the flattened plain text of ONE message. */
 		function locateOffsets(plainText, target) {
 			if (target.end <= plainText.length && plainText.slice(target.start, target.end) === target.exact) return {
@@ -261,7 +269,7 @@ window.__ModuleLoader__.load({
 			};
 			return null;
 		}
-		/** Build an anchor target from a DOM selection confined to ONE assistant message. */
+		/** Build an anchor target from a DOM selection confined to ONE chat message. */
 		function extractTarget(selection, root) {
 			if (selection.rangeCount === 0) return null;
 			const range = selection.getRangeAt(0);
@@ -269,8 +277,8 @@ window.__ModuleLoader__.load({
 			const container = messageContainerOf(range.startContainer, root);
 			if (container === null) return null;
 			if (messageContainerOf(range.endContainer, root) !== container) return null;
-			const messageId = container.getAttribute("data-dsh-assistant-message-id");
-			if (messageId === null || messageId === "") return null;
+			const key = container.getAttribute(ANCHOR_KEY_ATTR);
+			if (key === null || key === "") return null;
 			const text = flattenedText(container);
 			if (text.nodes.length === 0) return null;
 			const start = textOffsetOf(text, range.startContainer, range.startOffset);
@@ -280,7 +288,7 @@ window.__ModuleLoader__.load({
 			if (exact === "") return null;
 			const { prefix, suffix } = boundAnchorContext(plainTextSlice(text, Math.max(0, start - 40), start), plainTextSlice(text, end, end + 40));
 			return {
-				messageId,
+				messageId: key,
 				start,
 				end,
 				exact,
@@ -288,18 +296,22 @@ window.__ModuleLoader__.load({
 				suffix
 			};
 		}
-		/** The annotatable assistant message element containing `node`, if any. */
+		/**
+		* The annotatable message element containing `node`, if any. Only assistant
+		* nodes are annotatable (streaming rows included — the plugin refuses anchors
+		* on running turns through the panel's stream check).
+		*/
 		function messageContainerOf(node, root) {
 			let current = node;
 			while (current !== null && current !== root) {
-				if (current instanceof HTMLElement && current.hasAttribute("data-dsh-assistant-selectable")) return current;
+				if (current instanceof HTMLElement && current.hasAttribute("data-chat-anchor-key")) return current;
 				current = current.parentNode;
 			}
 			return null;
 		}
-		/** The annotatable message element with the given durable id, if present. */
-		function messageElementOf(messageId, root) {
-			return root.querySelector(`[data-dsh-assistant-selectable][data-dsh-assistant-message-id="${cssEscape(messageId)}"]`);
+		/** The chat message element with the given stable node key, if present. */
+		function messageElementOf(key, root) {
+			return root.querySelector(`[${ANCHOR_KEY_ATTR}="${cssEscape(key)}"]`);
 		}
 		function flattenedText(container) {
 			const nodes = [];
@@ -369,7 +381,7 @@ window.__ModuleLoader__.load({
 			}
 			return null;
 		}
-		/** Minimal CSS identifier escaping for attribute selectors (message ids are seqs, defensive). */
+		/** Minimal CSS identifier escaping for attribute selectors. */
 		function cssEscape(value) {
 			return value.replace(/["\\]/g, "\\$&");
 		}
@@ -467,12 +479,47 @@ window.__ModuleLoader__.load({
 		* (the native band under the composer card). Renders the collapsible
 		* 「批注 ×N」 list, the selection float bar (「批注」 button over assistant
 		* text), the CSS-Highlight painting with rAF-merged repositioning, and the
-		* chip↔item sync (a manually deleted chip is re-inserted and the panel
-		* prompts the user to remove it from here instead).
+		* lifecycle observation: chip disappearance (submitted, optimistic),
+		* chip restoration after a failed send (failed), the queue carrying the
+		* envelope (queued), and history carrying the native context row (landed →
+		* cleared). No auto re-insertion: a deleted or refreshed-away chip is
+		* re-attached by the user from the panel (or rebuilt once when the draft
+		* fingerprint still matches).
 		*/
+		const EMPTY_INPUT = {
+			draft: "",
+			draftRev: 0,
+			phase: "plain",
+			occurrences: []
+		};
 		const MAX_NOTE_LENGTH = 4096;
-		function AnnotationPanel({ sessionId, actx, registry, useInput, inputActions }) {
-			const input = useInput((state) => state);
+		/** The id marker the Node half embeds in the native context row. */
+		const ID_MARKER = /〔([^〕]+)〕/g;
+		/** Collect annotation ids referenced by the history's native context rows. */
+		function landedIds(session, ids) {
+			const wanted = new Set(ids);
+			const landed = /* @__PURE__ */ new Set();
+			for (const node of session.chat.nodes.values()) {
+				const data = node.data;
+				if (!Array.isArray(data?.content)) continue;
+				for (const block of data.content) {
+					if (typeof block !== "object" || block === null) continue;
+					const text = block.text;
+					if (typeof text !== "string") continue;
+					for (const match of text.matchAll(ID_MARKER)) {
+						const id = match[1];
+						if (id !== void 0 && wanted.has(id)) landed.add(id);
+					}
+				}
+			}
+			return landed;
+		}
+		function AnnotationPanel(props) {
+			const { sessionId, actx, registry, session } = props;
+			const kit = props;
+			const useInput = kit.useInput;
+			const inputActions = kit.inputActions;
+			const input = useInput === void 0 ? EMPTY_INPUT : useInput((state) => state);
 			const draft = registry.get(sessionId);
 			const [open, setOpen] = (0, react.useState)(false);
 			const [editingId, setEditingId] = (0, react.useState)(null);
@@ -483,6 +530,9 @@ window.__ModuleLoader__.load({
 			const surfaceRef = (0, react.useRef)(null);
 			const queueRef = (0, react.useRef)(null);
 			const floatTargetRef = (0, react.useRef)(null);
+			const lastChipRefs = (0, react.useRef)(null);
+			const mountedRef = (0, react.useRef)(false);
+			const rebuiltRef = (0, react.useRef)(false);
 			const locked = input.phase === "submitting" || input.phase === "adjudicating";
 			(0, react.useEffect)(() => {
 				const overlay = overlayRef.current;
@@ -493,7 +543,7 @@ window.__ModuleLoader__.load({
 					queueRef.current = new RepaintQueue(surface, () => registry.get(sessionId).items, document);
 				}
 				const repaint = () => {
-					const located = queueRef.current === null ? surfaceRef.current.paint(registry.get(sessionId).items, document) : surfaceRef.current.paint(registry.get(sessionId).items, document);
+					const located = surfaceRef.current.paint(registry.get(sessionId).items, document);
 					const next = new Set(registry.get(sessionId).items.map((item) => item.id).filter((id) => !located.some((l) => l.id === id)));
 					setMovedIds((current) => {
 						if (current.size === next.size && [...current].every((id) => next.has(id))) return current;
@@ -525,10 +575,50 @@ window.__ModuleLoader__.load({
 				};
 			}, []);
 			(0, react.useEffect)(() => {
-				if (locked || actx === void 0) return;
+				const present = new Set(input.occurrences.filter((o) => o.source === SOURCE).map((o) => o.ref));
+				const key = [...present].sort().join(",");
+				const prev = lastChipRefs.current;
+				lastChipRefs.current = key;
+				if (draft.items.length === present.size && draft.items.every((item) => present.has(item.id))) registry.setFingerprint(sessionId, registry.fingerprint(sessionId));
+				if (!mountedRef.current) {
+					mountedRef.current = true;
+					return;
+				}
+				if (prev === null) return;
+				const prevSet = new Set(prev === "" ? [] : prev.split(","));
+				for (const item of draft.items) {
+					const wasThere = prevSet.has(item.id);
+					const isThere = present.has(item.id);
+					if (wasThere && !isThere && item.state === "attached") registry.setState(sessionId, item.id, "submitted");
+					else if (!wasThere && isThere && item.state === "submitted") registry.setState(sessionId, item.id, "failed");
+				}
+			}, [
+				input.occurrences,
+				input.draftRev,
+				draft.items,
+				registry,
+				sessionId
+			]);
+			(0, react.useEffect)(() => {
+				const ids = draft.items.map((item) => item.id);
+				if (ids.length === 0) return;
+				const landed = landedIds(session, ids);
+				if (landed.size === 0) return;
+				registry.removeItems(sessionId, [...landed]);
+				setNotice(null);
+			}, [
+				session,
+				draft.items,
+				registry,
+				sessionId
+			]);
+			(0, react.useEffect)(() => {
+				if (rebuiltRef.current || locked || actx === void 0) return;
 				const present = new Set(input.occurrences.filter((o) => o.source === SOURCE).map((o) => o.ref));
 				const missing = draft.items.filter((item) => !present.has(item.id));
 				if (missing.length === 0) return;
+				if (!registry.shouldRebuildChips(sessionId)) return;
+				rebuiltRef.current = true;
 				for (const item of missing) {
 					const { reference, span } = chipInsert(item, draft.items.indexOf(item), input.draft.length, input.draftRev);
 					actx.bail(actx, "slash/input-insert-reference", {
@@ -536,7 +626,6 @@ window.__ModuleLoader__.load({
 						span
 					});
 				}
-				setNotice(missing.length > 0 ? `已恢复 ${missing.length} 条被删除的批注引用；如需移除请从批注面板清除` : null);
 			}, [
 				actx,
 				input.draft,
@@ -544,7 +633,9 @@ window.__ModuleLoader__.load({
 				input.occurrences,
 				input.phase,
 				locked,
-				draft.items
+				draft.items,
+				registry,
+				sessionId
 			]);
 			(0, react.useEffect)(() => {
 				let frame = 0;
@@ -585,15 +676,23 @@ window.__ModuleLoader__.load({
 					setNotice("批注已达上限（32 条）");
 					return;
 				}
+				insertChip(item);
+				document.getSelection()?.removeAllRanges();
+				setFloat(null);
+				floatTargetRef.current = null;
+				setOpen(true);
+				setNotice(null);
+			};
+			const insertChip = (item) => {
 				const { reference, span } = chipInsert(item, draft.items.indexOf(item), input.draft.length, input.draftRev);
 				actx?.bail(actx, "slash/input-insert-reference", {
 					reference,
 					span
 				});
-				document.getSelection()?.removeAllRanges();
-				setFloat(null);
-				floatTargetRef.current = null;
-				setOpen(true);
+			};
+			const reattach = (item) => {
+				insertChip(item);
+				registry.setState(sessionId, item.id, "attached");
 				setNotice(null);
 			};
 			const removeItem = (id) => {
@@ -678,6 +777,7 @@ window.__ModuleLoader__.load({
 								moved: movedIds.has(item.id),
 								locked,
 								editing: editingId === item.id,
+								chipPresent: input.occurrences.some((o) => o.source === "annotation" && o.ref === item.id),
 								onEdit: () => {
 									setEditingId(item.id);
 								},
@@ -690,6 +790,9 @@ window.__ModuleLoader__.load({
 								},
 								onRemove: () => {
 									removeItem(item.id);
+								},
+								onReattach: () => {
+									reattach(item);
 								}
 							}, item.id)),
 							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
@@ -711,8 +814,15 @@ window.__ModuleLoader__.load({
 				]
 			});
 		}
-		function AnnotationItemRow({ item, index, moved, locked, editing, onEdit, onSave, onCancel, onRemove }) {
+		const STATE_LABEL = {
+			submitted: "已提交，等待确认",
+			queued: "已排队",
+			failed: "发送失败，可重新附加",
+			unknown: "状态未知（队列被修改）"
+		};
+		function AnnotationItemRow({ item, index, moved, locked, editing, chipPresent, onEdit, onSave, onCancel, onRemove, onReattach }) {
 			const [value, setValue] = (0, react.useState)(item.note);
+			const stateLabel = item.state === "attached" ? null : STATE_LABEL[item.state];
 			if (editing) return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 				className: "dsh-ann2-item",
 				"data-dsh-annotation-2": true,
@@ -779,6 +889,25 @@ window.__ModuleLoader__.load({
 						moved && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 							className: "dsh-ann2-moved",
 							children: "原文位置已变化（引用和批注仍可发送）"
+						}),
+						stateLabel !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+							className: "dsh-ann2-moved",
+							children: stateLabel
+						}),
+						!chipPresent && item.state !== "submitted" && item.state !== "landed" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+							style: {
+								display: "flex",
+								gap: 6,
+								marginTop: 2
+							},
+							children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+								type: "button",
+								className: "dsh-ann2-btn",
+								"data-primary": true,
+								onClick: onReattach,
+								disabled: locked,
+								children: "重新附加"
+							})
 						})
 					] }),
 					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
@@ -806,20 +935,38 @@ window.__ModuleLoader__.load({
 		//#region src/client/session-registry.ts
 		/**
 		* Per-session annotation registry: in-memory drafts backed by localStorage,
-		* with mutations always persisted (best-effort). One registry per plugin
-		* apply; sessions materialize their draft on first access.
+		* with mutations always persisted (best-effort), plus a GLOBAL id→item index
+		* (the 0811 ReferenceCodec signature has no session parameter, so the ref —
+		* a global unique annotation id — resolves through the index). Also owns the
+		* draft fingerprint used to decide whether chips can be rebuilt after a
+		* refresh.
 		*/
 		function createSessionRegistry(storage) {
 			const drafts = /* @__PURE__ */ new Map();
+			/** Global id → {sessionId, item} index (refs are global-unique uuids). */
+			const byId = /* @__PURE__ */ new Map();
+			const fingerprintKey = (sessionId) => `dsh-annotation:fingerprint:v1:${sessionId}`;
+			const indexItem = (sessionId, item) => {
+				byId.set(item.id, {
+					sessionId,
+					item
+				});
+			};
+			const reindex = (sessionId, draft) => {
+				for (const [id, entry] of byId) if (entry.sessionId === sessionId) byId.delete(id);
+				for (const item of draft.items) indexItem(sessionId, item);
+			};
 			const get = (sessionId) => {
 				const existing = drafts.get(sessionId);
 				if (existing !== void 0) return existing;
 				const restored = loadDraft(sessionId, storage);
 				drafts.set(sessionId, restored);
+				reindex(sessionId, restored);
 				return restored;
 			};
 			const apply = (sessionId, mutation) => {
 				drafts.set(sessionId, mutation.draft);
+				reindex(sessionId, mutation.draft);
 				saveDraft(sessionId, mutation.draft, storage);
 				return mutation.draft;
 			};
@@ -830,7 +977,8 @@ window.__ModuleLoader__.load({
 					const item = {
 						id: crypto.randomUUID(),
 						target,
-						note
+						note,
+						state: "attached"
 					};
 					const mutation = addItem(draft, item);
 					if (mutation === null) return null;
@@ -838,16 +986,55 @@ window.__ModuleLoader__.load({
 					return item;
 				},
 				update(sessionId, id, note) {
-					apply(sessionId, updateNote(get(sessionId), id, note));
+					const draft = get(sessionId);
+					if (draft.items.find((item) => item.id === id) === void 0) return;
+					apply(sessionId, updateNote(draft, id, note));
 				},
 				remove(sessionId, id) {
 					apply(sessionId, removeItems(get(sessionId), [id]));
 				},
-				commit(sessionId, ids) {
+				removeItems(sessionId, ids) {
 					apply(sessionId, removeItems(get(sessionId), ids));
 				},
 				clear(sessionId) {
 					apply(sessionId, clearItems(get(sessionId)));
+				},
+				find(id) {
+					return byId.get(id)?.item;
+				},
+				setState(sessionId, id, state) {
+					const draft = get(sessionId);
+					const items = draft.items.map((item) => item.id === id ? {
+						...item,
+						state
+					} : item);
+					if (items.every((item, index) => item === draft.items[index])) return;
+					apply(sessionId, {
+						draft: {
+							version: 1,
+							batchId: deriveBatchId(items),
+							items
+						},
+						batchChanged: false
+					});
+				},
+				fingerprint(sessionId) {
+					const items = get(sessionId).items;
+					return contentHash(items.map((item) => item.id).join(","));
+				},
+				setFingerprint(sessionId, fingerprint) {
+					try {
+						storage.setItem(fingerprintKey(sessionId), fingerprint);
+					} catch {}
+				},
+				shouldRebuildChips(sessionId) {
+					try {
+						const stored = storage.getItem(fingerprintKey(sessionId));
+						if (stored === null) return false;
+						return stored === this.fingerprint(sessionId);
+					} catch {
+						return false;
+					}
 				}
 			};
 		}

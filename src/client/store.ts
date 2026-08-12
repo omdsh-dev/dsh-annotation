@@ -14,6 +14,7 @@ import {
   MAX_QUOTE_BYTES,
   type AnnotationDraftStateV1,
   type AnnotationItemV1,
+  type AnnotationStateV1,
 } from './types.ts'
 
 const STORAGE_PREFIX = 'dsh-annotation:draft:v1:'
@@ -43,8 +44,13 @@ export function loadDraft(sessionId: string, storage: Pick<Storage, 'getItem'>):
     const parsed = JSON.parse(raw) as unknown
     if (!isDraftState(parsed)) return emptyDraft()
     // Re-derive the batch id from the stored payload: a legacy or tampered
-    // batchId must never survive into a submission.
-    return { version: 1, batchId: deriveBatchId(parsed.items), items: parsed.items }
+    // batchId must never survive into a submission. Records written before
+    // the lifecycle state existed default to 'attached'.
+    const items = parsed.items.map(item => ({
+      ...item,
+      state: (item as { state?: AnnotationStateV1 }).state ?? ('attached' as const),
+    }))
+    return { version: 1, batchId: deriveBatchId(items), items }
   } catch {
     return emptyDraft()
   }

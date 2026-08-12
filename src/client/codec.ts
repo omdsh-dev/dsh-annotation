@@ -1,13 +1,18 @@
 /**
  * The annotation trigger source: registered so the input pipeline can route
- * reference serialization and acceptance notifications through its codec.
+ * reference serialization through its codec — using the ORIGINAL 0811
+ * ReferenceCodec contract (`serialize(ref, signal)`), no DSH modification.
+ *
  * The source itself never opens a menu (candidates are empty); chips are
- * inserted by the panel through the scoped insert-reference event.
+ * inserted by the panel through the native scoped insert-reference event.
+ * `ref` is the GLOBAL-unique annotation id, so the old signature can resolve
+ * the item without a session parameter. Serialization emits a strict
+ * versioned envelope (plain text inside the message); the plugin Node half
+ * splits it into native context + clean question at agent/pre-step time.
  */
 
-import type {
-  ClientSessionContext, ReferenceInsert, ReferenceSerialization, SlashSource,
-} from '@deepseek-ai/dsh-client-ui-slash/client'
+import type { ReferenceInsert, SlashSource } from '@deepseek-ai/dsh-client-ui-slash/client'
+import { encodeEnvelope } from '../shared/envelope.ts'
 import type { SessionRegistry } from './session-registry.ts'
 import type { AnnotationItemV1 } from './types.ts'
 
@@ -19,16 +24,6 @@ export function chipLabel(index: number): string {
   return `批注 ${index + 1}`
 }
 
-/** One notice's readable markdown body: quote, source index, and the note. */
-export function noticeText(item: AnnotationItemV1, index: number): string {
-  const lines = [
-    `> 引用：${item.target.exact}`,
-    `来源：消息 ${item.target.messageId}，第 ${index} 处`,
-    `批注：${item.note === '' ? '（未填写）' : item.note}`,
-  ]
-  return lines.join('\n')
-}
-
 export function createAnnotationSource(registry: SessionRegistry): SlashSource {
   return {
     trigger: '@',
@@ -36,26 +31,28 @@ export function createAnnotationSource(registry: SessionRegistry): SlashSource {
     candidates: () => Promise.resolve([]),
     onPick: () => undefined,
     codec: {
+      // The chip's clipboard projection: empty — the envelope protocol never
+      // enters copy/cut/persistence projections.
       clipboardText: () => '',
-      serialize(session: ClientSessionContext, ref: string): Promise<ReferenceSerialization> {
-        const draft = registry.get(session.sessionId)
-        const index = draft.items.findIndex(item => item.id === ref)
-        if (index < 0) {
-          return Promise.reject(new Error(`annotation "${ref}" is no longer pending in this session`))
+      // Original 0811 signature: the ref is a GLOBAL unique annotation id, so
+      // the registry resolves it without a session parameter.
+      serialize(ref: string, signal: AbortSignal): Promise<string> {
+        try {
+          const item = registry.find(ref)
+          if (item === undefined) {
+            return Promise.reject(new Error(`annotation "${ref}" is no longer pending in any session`))
+          }
+          signal.throwIfAborted()
+          return Promise.resolve(encodeEnvelope({
+            version: 1,
+            id: item.id,
+            quote: item.target.exact,
+            note: item.note,
+          }))
+        } catch (error) {
+          // Synchronous throw (abort, etc.) becomes a rejection, never escapes.
+          return Promise.reject(error)
         }
-        const item = draft.items[index]!
-        return Promise.resolve({
-          kind: 'context',
-          // The WHOLE pending batch shares one content-derived id: identical
-          // retries dedupe on the Host; any edit derived a new id already.
-          batchId: draft.batchId,
-          summary: `批注 ${index + 1}`,
-          text: noticeText(item, index + 1),
-        })
-      },
-      committed(session: ClientSessionContext, ref: string) {
-        // Host accepted the batch: retire exactly the sent item.
-        registry.commit(session.sessionId, [ref])
       },
     },
   }

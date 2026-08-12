@@ -1,13 +1,20 @@
 /**
- * Selection extraction and anchor re-location for completed assistant
- * messages. Anchors NEVER cross messages: re-location searches only the one
- * message named by the target, in the order 1) same message + same offset
- * still matches the exact text, 2) unique match by exact text plus prefix and
- * suffix within that message, 3) otherwise the anchor is reported as moved.
+ * Selection extraction and anchor re-location using ONLY stock 0811 chat
+ * attributes (`data-chat-anchor-key` / `data-chat-flow-kind` on every chat
+ * node — no DSH modification). Anchors never cross messages: re-location
+ * searches only the one message named by the target, in the order 1) same
+ * message + same offset still matches the exact text, 2) unique match by
+ * exact text plus prefix/suffix within that message, 3) otherwise the anchor
+ * is reported as moved.
  */
 
 import type { AnnotationTargetV1 } from './types.ts'
 import { boundAnchorContext } from './store.ts'
+
+/** The stock chat-node attribute carrying the stable node key. */
+export const ANCHOR_KEY_ATTR = 'data-chat-anchor-key'
+/** The stock chat-node attribute carrying the node kind. */
+export const KIND_ATTR = 'data-chat-flow-kind'
 
 /** Anchor re-location over the flattened plain text of ONE message. */
 export function locateOffsets(plainText: string, target: AnnotationTargetV1): { start: number; end: number } | null {
@@ -42,7 +49,7 @@ export function locateOffsets(plainText: string, target: AnnotationTargetV1): { 
   return null
 }
 
-/** Build an anchor target from a DOM selection confined to ONE assistant message. */
+/** Build an anchor target from a DOM selection confined to ONE chat message. */
 export function extractTarget(
   selection: { rangeCount: number; getRangeAt(index: number): Range; toString(): string },
   root: Document,
@@ -53,8 +60,8 @@ export function extractTarget(
   const container = messageContainerOf(range.startContainer, root)
   if (container === null) return null
   if (messageContainerOf(range.endContainer, root) !== container) return null
-  const messageId = container.getAttribute('data-dsh-assistant-message-id')
-  if (messageId === null || messageId === '') return null
+  const key = container.getAttribute(ANCHOR_KEY_ATTR)
+  if (key === null || key === '') return null
   const text = flattenedText(container)
   if (text.nodes.length === 0) return null
   const start = textOffsetOf(text, range.startContainer, range.startOffset)
@@ -66,14 +73,18 @@ export function extractTarget(
     plainTextSlice(text, Math.max(0, start - 40), start),
     plainTextSlice(text, end, end + 40),
   )
-  return { messageId, start, end, exact, prefix, suffix }
+  return { messageId: key, start, end, exact, prefix, suffix }
 }
 
-/** The annotatable assistant message element containing `node`, if any. */
+/**
+ * The annotatable message element containing `node`, if any. Only assistant
+ * nodes are annotatable (streaming rows included — the plugin refuses anchors
+ * on running turns through the panel's stream check).
+ */
 export function messageContainerOf(node: Node, root: Document): HTMLElement | null {
   let current: Node | null = node
   while (current !== null && current !== root) {
-    if (current instanceof HTMLElement && current.hasAttribute('data-dsh-assistant-selectable')) {
+    if (current instanceof HTMLElement && current.hasAttribute(ANCHOR_KEY_ATTR)) {
       return current
     }
     current = current.parentNode
@@ -81,9 +92,9 @@ export function messageContainerOf(node: Node, root: Document): HTMLElement | nu
   return null
 }
 
-/** The annotatable message element with the given durable id, if present. */
-export function messageElementOf(messageId: string, root: Document): HTMLElement | null {
-  return root.querySelector(`[data-dsh-assistant-selectable][data-dsh-assistant-message-id="${cssEscape(messageId)}"]`)
+/** The chat message element with the given stable node key, if present. */
+export function messageElementOf(key: string, root: Document): HTMLElement | null {
+  return root.querySelector(`[${ANCHOR_KEY_ATTR}="${cssEscape(key)}"]`)
 }
 
 /** Flatten one message's text nodes in document order with cumulative offsets. */
@@ -164,7 +175,7 @@ function nodeAtOffset(text: FlattenedText, offset: number): { node: Text; offset
   return null
 }
 
-/** Minimal CSS identifier escaping for attribute selectors (message ids are seqs, defensive). */
+/** Minimal CSS identifier escaping for attribute selectors. */
 function cssEscape(value: string): string {
   return value.replace(/["\\]/g, '\\$&')
 }
