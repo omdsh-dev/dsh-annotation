@@ -614,9 +614,9 @@ window.__ModuleLoader__.load({
 			]);
 			(0, react.useEffect)(() => {
 				if (rebuildRanRef.current || locked || actx === void 0) return;
-				rebuildRanRef.current = true;
 				const present = new Set(input.occurrences.filter((o) => o.source === SOURCE).map((o) => o.ref));
 				const missing = draft.items.filter((item) => !present.has(item.id));
+				rebuildRanRef.current = true;
 				if (missing.length === 0) return;
 				if (!registry.shouldRebuildChips(sessionId)) return;
 				for (const item of missing) {

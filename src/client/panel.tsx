@@ -193,9 +193,12 @@ export function AnnotationPanel(props: AnnotationPanelProps) {
   // — the user re-attaches from the panel.
   useEffect(() => {
     if (rebuildRanRef.current || locked || actx === undefined) return
-    rebuildRanRef.current = true
     const present = new Set(input.occurrences.filter(o => o.source === SOURCE).map(o => o.ref))
     const missing = draft.items.filter(item => !present.has(item.id))
+    // The one-shot gate closes once the FIRST evaluable pass (actx present)
+    // has decided — whether it rebuilt or not. Passes that ran before the
+    // session scope was available do NOT close it.
+    rebuildRanRef.current = true
     if (missing.length === 0) return
     if (!registry.shouldRebuildChips(sessionId)) return
     for (const item of missing) {
