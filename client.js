@@ -122,7 +122,7 @@ window.__ModuleLoader__.load({
         '  border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px;',
         '  background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary);',
         '  font-family: inherit; font-size: 13px; line-height: 20px;',
-        '  outline: none; resize: vertical; }',
+        '  outline: none; resize: vertical; transition: border-color .15s ease; }',
         '.dsh-ann-input:focus { border-color: var(--dsw-alias-text-accent, #4c9aff); }',
         '.dsh-ann-input::placeholder { color: var(--dsw-alias-label-dimmed); }',
         '.dsh-ann-row { display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; }',
@@ -134,14 +134,17 @@ window.__ModuleLoader__.load({
         '.dsh-ann-error { color: var(--dsw-alias-state-error-primary, #ff7a7a);',
         '  font-size: 12px; margin-top: 8px; word-break: break-word; }',
         '.dsh-ann-hl { position: fixed; z-index: 900; background: rgba(255, 195, 0, .15);',
-        '  border-radius: 2px; pointer-events: none; }',
+        '  border-radius: 2px; pointer-events: none; animation: dsh-ann-fadein .15s ease; }',
         '.dsh-ann-num { position: fixed; z-index: 940; display: inline-flex; align-items: center;',
         '  justify-content: center; min-width: 16px; height: 16px; padding: 0 4px;',
         '  border-radius: 8px; border: 1px solid rgba(255, 255, 255, .3);',
         '  background: var(--dsw-alias-text-accent, #4c9aff); color: #fff;',
         '  font-family: var(--dsw-font-family, system-ui); font-size: 10px; font-weight: 700;',
-        '  box-shadow: 0 1px 4px rgba(0,0,0,.35); pointer-events: auto; cursor: pointer; }',
+        '  box-shadow: 0 1px 4px rgba(0,0,0,.35); pointer-events: auto; cursor: pointer;',
+        '  transition: filter .12s ease; }',
         '.dsh-ann-num:hover { filter: brightness(1.15); }',
+        '.dsh-ann-tip { animation: dsh-ann-pop .12s var(--ds-ease-in-out, ease); }',
+        '@keyframes dsh-ann-fadein { from { opacity: 0; } to { opacity: 1; } }',
       ].join('\n')
       document.head.appendChild(style)
     }
@@ -859,7 +862,6 @@ window.__ModuleLoader__.load({
             already,
             enterEditing,
           ))
-          bar.appendChild(iconButton('dsh-ann-icon', ICONS.close, '关闭', closeToolbar))
           host.appendChild(bar)
           ui.el = bar
         } else if (ui.mode === 'editing') {
@@ -1205,7 +1207,7 @@ window.__ModuleLoader__.load({
       // ---------- 输入框旁的批注标签（N 条批注 · 悬浮看全部内容） ----------
       var chipLayer = document.createElement('div')
       chipLayer.setAttribute('data-annotation-chip', '')
-      chipLayer.style.cssText = 'position:fixed;z-index:1150;display:none;align-items:center;gap:4px;height:22px;padding:0 10px;border-radius:11px;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu,#2c2c2e);box-shadow:var(--dsw-shadow-lv3);font-family:var(--dsw-font-family,system-ui);font-size:11px;color:var(--dsw-alias-label-primary);cursor:default;'
+      chipLayer.style.cssText = 'position:fixed;z-index:1150;display:none;align-items:center;gap:4px;height:22px;padding:0 10px;border-radius:11px;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu,#2c2c2e);box-shadow:var(--dsw-shadow-lv3);font-family:var(--dsw-font-family,system-ui);font-size:11px;color:var(--dsw-alias-label-primary);cursor:default;animation:dsh-ann-pop .12s var(--ds-ease-in-out, ease);'
       document.body.appendChild(chipLayer)
       var tipLayer = document.createElement('div')
       tipLayer.setAttribute('data-annotation-tip-layer', '')
@@ -1431,6 +1433,7 @@ window.__ModuleLoader__.load({
           tag.addEventListener('mouseenter', function () {
             tipLayer.textContent = ''
             var el = document.createElement('div')
+            el.className = 'dsh-ann-tip'
             el.style.cssText = 'position:fixed;z-index:1160;width:300px;max-width:calc(100vw - 16px);padding:10px 12px;border-radius:12px;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu,#2c2c2e);box-shadow:var(--dsw-shadow-lv3);font-family:var(--dsw-font-family,system-ui);font-size:12px;color:var(--dsw-alias-label-primary);'
             var head = document.createElement('div')
             head.style.cssText = 'font-weight:600;margin-bottom:6px;'
@@ -1591,6 +1594,7 @@ window.__ModuleLoader__.load({
         chip.addEventListener('mouseenter', function () {
           tipLayer.textContent = ''
           var el = document.createElement('div')
+          el.className = 'dsh-ann-tip'
           el.style.cssText = 'position:fixed;z-index:1160;width:320px;max-width:calc(100vw - 16px);padding:10px 12px;border-radius:12px;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu,#2c2c2e);box-shadow:var(--dsw-shadow-lv3);font-family:var(--dsw-font-family,system-ui);font-size:12px;color:var(--dsw-alias-label-primary);'
           var head = document.createElement('div')
           head.style.cssText = 'font-weight:600;margin-bottom:6px;'
