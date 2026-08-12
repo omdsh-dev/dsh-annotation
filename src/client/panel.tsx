@@ -100,7 +100,7 @@ export function AnnotationPanel(props: AnnotationPanelProps) {
   const floatTargetRef = useRef<AnnotationTargetV1 | null>(null)
   const lastChipRefs = useRef<string | null>(null)
   const mountedRef = useRef(false)
-  const rebuiltRef = useRef(false)
+  const rebuildRanRef = useRef(false)
   const locked = input.phase === 'submitting' || input.phase === 'adjudicating'
 
   // Paint highlights + pins whenever the items, the input, or the session
@@ -186,17 +186,18 @@ export function AnnotationPanel(props: AnnotationPanelProps) {
   }, [session, draft.items, registry, sessionId])
 
   // Refresh rebuild: chips live only in the draft mirror (clipboard
-  // projection is empty), so after a reload they are gone. Rebuild them ONCE
-  // per mount (the refresh scenario) when the draft fingerprint still matches
-  // the persisted one; chips deleted inside the live session are never
-  // auto-restored — the user re-attaches from the panel.
+  // projection is empty), so after a reload they are gone. Rebuild them ONLY
+  // on the first effect evaluation after mount (the refresh scenario) when
+  // the draft fingerprint still matches the persisted one. Chips cleared by
+  // a real send, or deleted inside the live session, are never auto-restored
+  // — the user re-attaches from the panel.
   useEffect(() => {
-    if (rebuiltRef.current || locked || actx === undefined) return
+    if (rebuildRanRef.current || locked || actx === undefined) return
+    rebuildRanRef.current = true
     const present = new Set(input.occurrences.filter(o => o.source === SOURCE).map(o => o.ref))
     const missing = draft.items.filter(item => !present.has(item.id))
     if (missing.length === 0) return
     if (!registry.shouldRebuildChips(sessionId)) return
-    rebuiltRef.current = true
     for (const item of missing) {
       const index = draft.items.indexOf(item)
       const { reference, span } = chipInsert(item, index, input.draft.length, input.draftRev)

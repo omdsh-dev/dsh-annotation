@@ -532,7 +532,7 @@ window.__ModuleLoader__.load({
 			const floatTargetRef = (0, react.useRef)(null);
 			const lastChipRefs = (0, react.useRef)(null);
 			const mountedRef = (0, react.useRef)(false);
-			const rebuiltRef = (0, react.useRef)(false);
+			const rebuildRanRef = (0, react.useRef)(false);
 			const locked = input.phase === "submitting" || input.phase === "adjudicating";
 			(0, react.useEffect)(() => {
 				const overlay = overlayRef.current;
@@ -613,12 +613,12 @@ window.__ModuleLoader__.load({
 				sessionId
 			]);
 			(0, react.useEffect)(() => {
-				if (rebuiltRef.current || locked || actx === void 0) return;
+				if (rebuildRanRef.current || locked || actx === void 0) return;
+				rebuildRanRef.current = true;
 				const present = new Set(input.occurrences.filter((o) => o.source === SOURCE).map((o) => o.ref));
 				const missing = draft.items.filter((item) => !present.has(item.id));
 				if (missing.length === 0) return;
 				if (!registry.shouldRebuildChips(sessionId)) return;
-				rebuiltRef.current = true;
 				for (const item of missing) {
 					const { reference, span } = chipInsert(item, draft.items.indexOf(item), input.draft.length, input.draftRev);
 					actx.bail(actx, "slash/input-insert-reference", {
