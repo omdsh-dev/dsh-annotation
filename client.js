@@ -1122,6 +1122,15 @@ window.__ModuleLoader__.load({
         }
       }
 
+      // 批注保存/删除完成后把焦点还给 composer 输入框（光标在末尾），
+      // 用户可直接回车发送，无需再点一下输入框。
+      function focusComposer() {
+        var ta = document.querySelector('[data-composer-card] textarea')
+        if (!(ta instanceof HTMLTextAreaElement) || ta.disabled) return
+        ta.focus()
+        ta.setSelectionRange(ta.value.length, ta.value.length)
+      }
+
       function saveAnnotation() {
         var text = ui.quote
         if (text === '') { ui.error = '没有选中的内容'; render(); return }
@@ -1138,6 +1147,7 @@ window.__ModuleLoader__.load({
               closeToolbar()
               updateChip()
               renderMarkers()
+              focusComposer()
               return
             }
           }
@@ -1163,6 +1173,7 @@ window.__ModuleLoader__.load({
         closeToolbar()
         updateChip()
         renderMarkers()
+        focusComposer()
       }
 
       function removeQuote(id) {
