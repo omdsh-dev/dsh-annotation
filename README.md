@@ -5,6 +5,10 @@
 <p align="center">
   <img src="https://badgen.net/badge/license/MIT/blue" alt="license">
 </p>
+<img width="2940" height="1770" alt="image" src="https://github.com/user-attachments/assets/c3186efc-44d3-4e7f-9523-1902d9d037e9" />
+<img width="2940" height="1770" alt="image" src="https://github.com/user-attachments/assets/0b48ac02-4648-4b94-8d8f-344f8b7c25b4" />
+<img width="2940" height="1770" alt="image" src="https://github.com/user-attachments/assets/8b2610d0-3d00-41be-b314-bac2fe616787" />
+<img width="2940" height="1770" alt="image" src="https://github.com/user-attachments/assets/9b66deea-3786-4296-9b0d-52873a15f5e1" />
 
 选中助手回复里的任意文字即可批注（批注内容可留空 = 仅标记原文），跨消息、跨回合连续收集；底部输入框旁出现「批注 ×N」标签（悬浮可见全部内容、可删单条）；直接回车，批注块随输入框里的问题一起发给模型。**你的消息气泡里不会出现批注块文本**——只显示问题和「批注 ×N」标签（hover 看内容，绘制前隐藏、零闪烁）；模型回复按「Annotation 1：…」逐条回应，回复里的每个 Annotation 标签都可悬浮查看对应批注的原文与内容。
 
