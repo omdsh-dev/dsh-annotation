@@ -1,6 +1,12 @@
 # dsh-annotation
 
-<p align="center">DSH Web 选中批注插件：选文字 → 批注 → 回车随消息发给模型，回复按批注编号逐条对照</p>
+<div align="center">
+
+**English** · [简体中文](./README.zh-CN.md)
+
+</div>
+
+<p align="center">Selection-annotation plugin for DSH Web: select text → annotate → press Enter to send it along with your message; the model replies to each annotation by number.</p>
 
 <p align="center">
   <img src="https://badgen.net/badge/license/MIT/blue" alt="license">
@@ -10,83 +16,88 @@
 <img width="2940" height="1770" alt="image" src="https://github.com/user-attachments/assets/8b2610d0-3d00-41be-b314-bac2fe616787" />
 <img width="2940" height="1770" alt="image" src="https://github.com/user-attachments/assets/9b66deea-3786-4296-9b0d-52873a15f5e1" />
 
-选中助手回复里的任意文字即可批注（批注内容可留空 = 仅标记原文），跨消息、跨回合连续收集；底部输入框旁出现「批注 ×N」标签（悬浮可见全部内容、可删单条）；直接回车，批注块随输入框里的问题一起发给模型。**你的消息气泡里不会出现批注块文本**——只显示问题和「批注 ×N」标签（hover 看内容，绘制前隐藏、零闪烁）；模型回复按「Annotation 1：…」逐条回应，回复里的每个 Annotation 标签都可悬浮查看对应批注的原文与内容。
+Select any text in an assistant reply to annotate it (the annotation body may be left empty = just mark the passage). Annotations accumulate across messages and turns. An **Annotations ×N** chip appears next to the input box — hover to view all annotations, remove them one by one. Press Enter and the annotation block goes to the model together with whatever question is in the input box. **The annotation block never shows up as text in your own message bubble** — only the question plus the chip (content visible on hover; hidden before paint, zero flicker). The model replies with `Annotation 1: …` … `Annotation N: …`, one per annotation, and every Annotation label in the reply is a hoverable chip showing the annotated passage and your note.
 
-形态：官方 **bundle 插件**（`dsh.bundle` + package.json `dsh.client` 声明，经 client-modules 注入浏览器端，Node half 为空实现）。**零核心改动**——不改 DSH 本体任何文件，`cordis.patch.yml` 仅一次 `insert` 自身 id，profile patch 保持 `[]`。
+Form: official **bundle plugin** (`dsh.bundle` + a `dsh.client` declaration in package.json, injected into the browser via client-modules; the Node half is an empty implementation). **Zero core changes** — no DSH files are touched; `cordis.patch.yml` only inserts its own id once, and the profile patch stays `[]`.
 
-## 能力
+## Features
 
-| 功能 | 说明 |
+| Feature | Description |
 |---|---|
-| 选中即批注 | 选中助手文字 → 工具条「批注」→ 直接写批注（可留空），点选外处或 Esc 收起 |
-| 编号脚标 + 高亮 | 原文位置亮蓝编号 + 高亮，视口内锚定、碰撞避让，滚出屏幕不丢失 |
-| 跨回合收集 | 任意多条批注跨消息/回合累积，编号从 1 开始 |
-| 「批注 ×N」标签 | 输入框旁小标签，悬浮显示全部批注内容，可逐条删除 |
-| 回车随消息发送 | 批注块 + 输入框问题一起发给模型（模型收到完整内容） |
-| 气泡隐藏批注块 | 发送瞬间（浏览器绘制前）批注块从气泡 DOM 隐藏，只留问题 + 「批注 ×N」标签，hover 可见内容；刷新后历史消息自动修复 |
-| 回复逐条对照 | 消息内注入格式指令，模型按「Annotation 1：…」…「Annotation N：…」逐条回应 |
-| 回复批注芯片 | 回复里的「Annotation N：」渲染为可悬浮芯片，hover 显示该批注的原文 + 批注内容 |
+| Select-to-annotate | Select assistant text → toolbar "Annotate" → write your note (may be empty); dismiss by clicking elsewhere or pressing Esc |
+| Numbered marker + highlight | A blue numbered marker + highlight anchored to the passage, viewport-anchored with collision avoidance, never lost when scrolled out of view |
+| Cross-turn collection | Any number of annotations accumulate across messages/turns, numbered from 1 |
+| "Annotations ×N" chip | Small chip beside the input box; hover shows every annotation, deletable individually |
+| Enter sends with your message | Annotation block + the question in the input box are sent to the model together (the model receives the full content) |
+| Hidden in your bubble | The annotation block is removed from your bubble's DOM the moment you send (before the browser paints), leaving only the question + the chip (hover to view); historical messages self-heal after a refresh |
+| Numbered reply correspondence | A format instruction is injected into the message so the model replies `Annotation 1: …` … `Annotation N: …` one by one |
+| Reply annotation chips | `Annotation N:` in the reply renders as hoverable chips showing the passage + your note |
 
-## 交互流
+## Interaction flow
 
 ```
-选中助手文字 ──▶ 工具条「批注」──▶ 写批注/留空保存 ──▶ 原文亮蓝编号+高亮
-        ▲                                                    │
-        └────────────── 任意多条、跨回合累积 ◀────────────────┘
-                        │
-                        ▼
-              输入框旁「批注 ×N」标签（hover 看内容/删除）
-                        │
-                    回车发送
-                        ▼
-   模型收到：批注块（编号+原文+批注）+ 你的问题
-   你的气泡：只显示问题 +「批注 ×N」标签（零闪烁）
-   模型回复：Annotation 1：… Annotation 2：…（可悬浮芯片）
+Select assistant text ──▶ Toolbar "Annotate" ──▶ Write note / save empty ──▶ Blue numbered marker + highlight
+        ▲                                                        │
+        └────────────── any number, accumulate across turns ◀────┘
+                                │
+                                ▼
+              "Annotations ×N" chip beside the input (hover to view / delete)
+                                │
+                            Press Enter
+                                ▼
+    Model receives: annotation block (number + passage + note) + your question
+    Your bubble: question only + "Annotations ×N" chip (zero flicker)
+    Model reply: Annotation 1: … Annotation 2: … (hoverable chips)
 ```
 
-## 安装（官方 bundle 路径 · 唯一）
+## Install (official bundle path · the only one)
 
 ```sh
-# npm 安装（发布后，推荐）
+# npm install (post-publish, recommended)
 dsh plugin --profile web add @dsh-external/dsh-annotation
-# 本地路径安装（开发调试）
+# local path install (development / debugging)
 cd /path/to/dsh-annotation
 dsh plugin --profile web add .
-# 或 git 安装（发布后可用；建议锁定 ref）
+# or git install (post-publish; pin a ref when possible)
 dsh plugin --profile web add github:omdsh-dev/dsh-annotation#<ref>&path:/
-# 重启 web
+# restart the web service
 launchctl kickstart -k "gui/$(id -u)/com.dsh.web"
 ```
 
-| 做 | 不做 |
+| Do | Don't |
 |----|------|
-| 只 `dsh plugin add` / 只写 `bundles` | **不要**再在 profile/home `cordis.patch.yml` insert 同 id |
+| Only `dsh plugin add` / only write `bundles` | **Never** insert the same id again in the profile/home `cordis.patch.yml` |
 
-自检：
+Self-check:
 
 ```sh
-dsh --profile web --dump-config | rg "id: dsh-annotation"   # 必须恰好 1 行
+dsh --profile web --dump-config | rg "id: dsh-annotation"   # must be exactly 1 line
 curl -s -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:3080/plugins/@dsh-external/dsh-annotation/client.js"   # 200
 ```
 
-## 架构要点
+## Architecture notes
 
-- **纯浏览器端**：全部能力在 `client.js`（hand-written CJS bundle，无构建步骤，按请求读取 no-cache）
-- **消息格式**：`我批注了以下 N 处内容…\n\n1. 原文\n   批注：…\n\n请用「Annotation 1：…」…\n\n提问：`
-  （分隔标记用「提问：」而非「问题：」——标题行「回答我的问题：」里也含它，气泡隐藏手术会误命中）
-- **气泡隐藏**：用户气泡是纯文本渲染（MessageText 单节点，非 markdown）；MutationObserver 微任务阶段（绘制前）按最后一个 `\n提问：` 切掉批注块、贴「批注 ×N」标签；1s 轮询兜底 + 刷新后历史消息自动修复
-- **回复芯片**：回复流式结束后（`data-streaming` 移除），把「Annotation N：」替换为可悬浮芯片；条目数据存于最近一条带批注标签的用户消息上（`tag.__annotationItems`），刷新后自动重建；**改 DOM 前先快照 TreeWalker 收集的文本节点再逐个替换**（遍历中途 replaceChild 会让 walker 指针失效，只处理到第一个节点）
-- **IME 安全**：Enter 拦截带 `isComposing`/keyCode 229 守卫；不 DOM 硬改 composer textarea；`setDraft` 仅在提交前一刻拼批注块，不覆盖用户草稿
-- **不依赖发送完成事件链**：气泡装饰走 MutationObserver + 轮询（`watchInputDraft` 在初始化时会话未加载时会失效，仅作暂存入口）
+- **Pure browser-side**: everything lives in `client.js` (a hand-written CJS bundle, no build step, served no-cache per request)
+- **Message format** (the literal protocol block sent to the model):
 
-## 版本历史
+  ```
+  我批注了以下 N 处内容…\n\n1. 原文\n   批注：…\n\n请用「Annotation 1：…」…\n\n提问：
+  ```
 
-| 版本 | 内容 |
+  The delimiter is 「提问：」(ask:) rather than 「问题：」(question:) — the heading line "回答我的问题：" also contains the latter, and the bubble-hiding surgery would misfire on it.
+- **Bubble hiding**: user bubbles are plain-text rendered (a single MessageText node, not markdown); a MutationObserver in the microtask phase (before paint) splits at the last `\n提问：`, cuts the annotation block, and attaches the chip; a 1 s polling fallback plus historical-message repair after refresh
+- **Reply chips**: after streaming settles (`data-streaming` removed), each `Annotation N:` is replaced with a hoverable chip; item data is stored on the most recent user message carrying the annotation tag (`tag.__annotationItems`) and rebuilt after refresh; **snapshot the text nodes collected by the TreeWalker before touching the DOM, then replace one by one** — replacing a child mid-walk invalidates the walker pointer and only the first node gets processed
+- **IME-safe**: the Enter interception carries `isComposing` / keyCode 229 guards; never hard-edits the composer textarea's DOM; `setDraft` only assembles the annotation block at the last moment before submit and never clobbers the user's draft
+- **No reliance on send-completion event chains**: bubble decoration uses MutationObserver + polling (`watchInputDraft` can be ineffective before the session is loaded at init; it is only a staging entry)
+
+## Version history
+
+| Version | Highlights |
 |---|---|
-| v1.3.x | 回复逐条对照：格式指令注入 + 「Annotation N：」可悬浮芯片（TreeWalker 快照修复） |
-| v1.2.x | 气泡隐藏批注块：MutationObserver 微任务零闪烁 + 轮询兜底 + 历史消息修复 |
-| v1.x | 自包含批注流（取代 v0.9 chip 设计）：capture Enter 拼稿随消息发送 |
-| v0.9.x | 早期 chip 设计（insertReference + slash codec），已被 v1.x 取代 |
+| v1.3.x | Numbered reply correspondence: format-instruction injection + hoverable `Annotation N:` chips (TreeWalker snapshot fix) |
+| v1.2.x | Hidden annotation block in bubble: MutationObserver microtask zero-flicker + polling fallback + historical-message repair |
+| v1.x | Self-contained annotation flow (replaces the v0.9 chip design): capture-Enter assembles the block and sends it with the message |
+| v0.9.x | Early chip design (insertReference + slash codec), superseded by v1.x |
 
 ## License
 
