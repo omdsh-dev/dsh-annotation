@@ -99,6 +99,10 @@ curl -s -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:3080/plugins/@dsh-ext
 | v1.x | Self-contained annotation flow (replaces the v0.9 chip design): capture-Enter assembles the block and sends it with the message |
 | v0.9.x | Early chip design (insertReference + slash codec), superseded by v1.x |
 
+## Friendly links
+
+- [Linux.do](https://linux.do)
+
 ## License
 
 MIT

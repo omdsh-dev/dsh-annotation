@@ -99,6 +99,10 @@ curl -s -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:3080/plugins/@dsh-ext
 | v1.x | 自包含批注流（取代 v0.9 chip 设计）：capture Enter 拼稿随消息发送 |
 | v0.9.x | 早期 chip 设计（insertReference + slash codec），已被 v1.x 取代 |
 
+## 友情链接
+
+- [Linux.do](https://linux.do)
+
 ## License
 
 MIT
