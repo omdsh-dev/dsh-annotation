@@ -1,6 +1,6 @@
 // annotation-for-dsh 的浏览器端 half（client bundle）。
 //
-// 手写 CJS + ModuleLoader 包装（同 dsh-external navbar/greeter 模式，零构建
+// 手写 CJS + ModuleLoader 包装（同 omdsh-dev navbar/greeter 模式，零构建
 // 步骤）：纯 DOM 自渲染，无任何 @deepseek-ai 值导入（bundle purity gate 合规）；
 // cordis 服务经 exports.inject 的字符串名接入（sessions / conversation）。
 //
@@ -28,12 +28,12 @@
 // 不依赖发送完成事件链：watchInputDraft 在初始化时会话未加载时会失效，仅作
 // 暂存入口；气泡装饰走 MutationObserver + 轮询。
 //
-// 判别式与 dsh-external/navbar 一致：助手行 = [data-time-hover-root] 且不含
+// 判别式与 omdsh-dev/navbar 一致：助手行 = [data-time-hover-root] 且不含
 // user bubble（[class*="bubble"]）。
 window.__ModuleLoader__.load({
   // 必须与 package.json "name" 完全一致，否则 client-modules 报：
-  // bundle loaded without registering "@dsh-external/dsh-annotation"
-  id: '@dsh-external/dsh-annotation',
+  // bundle loaded without registering "@omdsh-dev/dsh-annotation"
+  id: '@omdsh-dev/dsh-annotation',
   factory: (require) => {
     'use strict'
     var module = { exports: {} }
@@ -1716,7 +1716,7 @@ window.__ModuleLoader__.load({
       }
     }
 
-    exports.name = '@dsh-external/dsh-annotation'
+    exports.name = '@omdsh-dev/dsh-annotation'
     exports.inject = ['sessions', 'conversation']
     exports.apply = apply
 
