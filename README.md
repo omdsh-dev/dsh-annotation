@@ -53,7 +53,7 @@ dsh plugin --profile web add @dsh-external/dsh-annotation
 cd /path/to/dsh-annotation
 dsh plugin --profile web add .
 # 或 git 安装（发布后可用；建议锁定 ref）
-dsh plugin --profile web add github:dsh-external/dsh-annotation#<ref>&path:/
+dsh plugin --profile web add github:omdsh-dev/dsh-annotation#<ref>&path:/
 # 重启 web
 launchctl kickstart -k "gui/$(id -u)/com.dsh.web"
 ```
