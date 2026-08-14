@@ -87,6 +87,7 @@ curl -s -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:3080/plugins/@omdsh-d
 - **Reply chips**: after streaming settles (`data-streaming` removed), each `Annotation N:` is replaced with a hoverable chip; item data is stored on the most recent user message carrying the annotation tag (`tag.__annotationItems`) and rebuilt after refresh; **snapshot the text nodes collected by the TreeWalker before touching the DOM, then replace one by one** — replacing a child mid-walk invalidates the walker pointer and only the first node gets processed
 - **IME-safe**: the Enter interception carries `isComposing` / keyCode 229 guards; never hard-edits the composer textarea's DOM; `setDraft` only assembles the annotation block at the last moment before submit and never clobbers the user's draft
 - **No reliance on send-completion event chains**: bubble decoration uses MutationObserver + polling (`watchInputDraft` can be ineffective before the session is loaded at init; it is only a staging entry)
+- **Focus-chat compatible**: works inside the focus conversation view of [dsh-focus-chat](https://github.com/dingyi222666/dsh-focus-chat) — assistant rows there are `[data-focus-flow]` containers with a `*_assistant` CSS-Modules class (plus `data-streaming` while running); selection, annotation, reply chips, and re-anchoring all work in the focus tab alongside the main chat view
 
 ## Version history
 

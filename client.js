@@ -30,6 +30,11 @@
 //
 // 判别式与 omdsh-dev/navbar 一致：助手行 = [data-time-hover-root] 且不含
 // user bubble（[class*="bubble"]）。
+// focus-chat（@dingyi222666/dsh-focus-chat）兼容：其会话视图挂载在
+// [data-focus-flow] 内，助手行 = class 含 "assistant" 的容器（CSS Modules
+// 哈希名形如 `<hash>_assistant`，流式期间行自带 data-streaming），用户行
+// 沿用 data-time-hover-root；切换视图 tab 时主视图会卸载，故行判别必须
+// 同时覆盖两种视图结构（见 assistantRows / allMessageRows / assistantRowOf）。
 window.__ModuleLoader__.load({
   // 必须与 package.json "name" 完全一致，否则 client-modules 报：
   // bundle loaded without registering "@omdsh-dev/dsh-annotation"
@@ -161,6 +166,46 @@ window.__ModuleLoader__.load({
         && !el.hasAttribute('data-turn-tail')
     }
 
+    // ---------- focus-chat（@dingyi222666/dsh-focus-chat）视图兼容 ----------
+    // 该插件在 conversation.view 槽注册「聚焦会话」视图：挂载于
+    // [data-focus-flow]（列容器）→ [data-focus-anchor-key]（行包装）→ 行。
+    // 助手行 = class 含 "assistant" 的容器（CSS Modules 哈希名保留 local 名，
+    // 形如 `<hash>_assistant`；流式期间行自带 data-streaming，停流后移除）。
+    // 用户行保留 data-time-hover-root + [class*="bubble"]，与旧判别式一致。
+    function isFocusFlow(el) {
+      return el !== null && typeof el.closest === 'function'
+        && el.closest('[data-focus-flow]') !== null
+    }
+
+    function isFocusAssistantRow(el) {
+      if (el === null || !el.classList || !isFocusFlow(el)) return false
+      for (var i = 0; i < el.classList.length; i++) {
+        if (el.classList[i].indexOf('assistant') !== -1) return true
+      }
+      return false
+    }
+
+    /** focus 视图的全部消息行（用户 + 助手，DOM 顺序）。只保留最外层助手
+     *  容器（markdown 内部子元素也可能带含 assistant 的类名）。 */
+    function focusMessageRows() {
+      var flow = document.querySelector('[data-focus-flow]')
+      if (flow === null) return []
+      var out = []
+      var all = flow.querySelectorAll('[data-time-hover-root], [class*="assistant"]')
+      for (var i = 0; i < all.length; i++) {
+        var el = all[i]
+        if (el.hasAttribute('data-time-hover-root')) {
+          if (!isAssistantRow(el)) out.push(el)
+          continue
+        }
+        if (!isFocusAssistantRow(el)) continue
+        var p = el.parentElement
+        if (p !== null && p !== flow && isFocusAssistantRow(p)) continue
+        out.push(el)
+      }
+      return out
+    }
+
     function assistantRowOf(node) {
       var el = (node instanceof Element) ? node : (node !== null ? node.parentElement : null)
       while (el !== null && el !== document.body) {
@@ -170,6 +215,14 @@ window.__ModuleLoader__.load({
         if (el.hasAttribute('data-time-hover-root')) {
           return isAssistantRow(el) ? el : null
         }
+        if (isFocusAssistantRow(el)) {
+          // 冒到最外层 focus 助手容器（内部子元素可能也含 assistant 类名）。
+          while (el.parentElement !== null && el.parentElement !== document.body
+            && isFocusAssistantRow(el.parentElement)) {
+            el = el.parentElement
+          }
+          return el
+        }
         el = el.parentElement
       }
       return null
@@ -178,15 +231,21 @@ window.__ModuleLoader__.load({
     function assistantRows() {
       var modern = document.querySelectorAll('[data-chat-flow-kind="assistant-step"]')
       if (modern.length > 0) return Array.prototype.slice.call(modern)
+      var focus = focusMessageRows().filter(isFocusAssistantRow)
+      if (focus.length > 0) return focus
       return Array.prototype.slice.call(document.querySelectorAll('[data-time-hover-root]'))
         .filter(isAssistantRow)
     }
 
     /** 全部消息行（用户 + 助手 + 其它节点）：新版走 data-chat-flow-kind，
-     *  旧版回退 data-time-hover-root。用于气泡装饰、批注条目回溯。 */
+     *  旧版回退 data-time-hover-root；focus-chat 视图单独按 DOM 顺序收集
+     *  （会话视图 tab 切换时主视图会卸载，两种结构不同时存在）。
+     *  用于气泡装饰、批注条目回溯。 */
     function allMessageRows() {
       var modern = document.querySelectorAll('[data-chat-flow-kind]')
       if (modern.length > 0) return Array.prototype.slice.call(modern)
+      var focus = focusMessageRows()
+      if (focus.length > 0) return focus
       return Array.prototype.slice.call(document.querySelectorAll('[data-time-hover-root]'))
     }
 
@@ -404,6 +463,10 @@ window.__ModuleLoader__.load({
       if (saved !== undefined && saved !== null && saved.seqKey !== '') {
         try {
           var item = document.querySelector('[data-chat-anchor-key="' + saved.seqKey + '"]')
+          // focus-chat 视图的锚 key 属性名不同，值语义一致。
+          if (item === null) {
+            item = document.querySelector('[data-focus-anchor-key="' + saved.seqKey + '"]')
+          }
           if (item !== null) {
             var itText = item.textContent || ''
             if (saved.textOffset >= 0) {
@@ -508,6 +571,7 @@ window.__ModuleLoader__.load({
       }
       if (best !== null && (ctx === null || bestScore > 0)) return best
       var flow = document.querySelector('[data-chat-flow]')
+      if (flow === null) flow = document.querySelector('[data-focus-flow]')
       if (flow !== null) {
         var full2 = flow.textContent || ''
         var positions2 = allPositionsOf(flow, quote)
@@ -1040,11 +1104,17 @@ window.__ModuleLoader__.load({
           }
           var node = live.commonAncestorContainer
           var el = node instanceof Element ? node : (node !== null ? node.parentElement : null)
-          while (el !== null && el !== document.body && !el.hasAttribute('data-chat-anchor-key')) {
+          // 主视图锚 key 为 data-chat-anchor-key；focus-chat 视图为
+          // data-focus-anchor-key，两者等价（消息 seq 锚定）。
+          while (el !== null && el !== document.body
+            && !el.hasAttribute('data-chat-anchor-key')
+            && !el.hasAttribute('data-focus-anchor-key')) {
             el = el.parentElement
           }
-          if (el !== null && el.hasAttribute('data-chat-anchor-key')) {
-            anchor.seqKey = el.getAttribute('data-chat-anchor-key') || ''
+          if (el !== null
+            && (el.hasAttribute('data-chat-anchor-key') || el.hasAttribute('data-focus-anchor-key'))) {
+            anchor.seqKey = el.getAttribute('data-chat-anchor-key')
+              || el.getAttribute('data-focus-anchor-key') || ''
             if (textMatch) {
               var itemText = el.textContent || ''
               var realOff = offsetOfRangeInRow(el, live)
@@ -1520,7 +1590,7 @@ window.__ModuleLoader__.load({
         var rows = assistantRows()
         for (var i = 0; i < rows.length; i++) {
           var el = rows[i]
-          if (!isAssistantRow(el)) continue
+          if (!isAssistantRow(el) && !isFocusAssistantRow(el)) continue
           // 新版 data-streaming 标记在 AssistantMarkdown 内部元素上（行元素
           // 本身没有）——必须查行内，否则流式输出途中就把「Annotation N：」
           // 替换成芯片，与 React 正在更新的文本节点冲突，整条回复可能渲染
