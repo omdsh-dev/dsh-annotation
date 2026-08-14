@@ -1187,6 +1187,7 @@ window.__ModuleLoader__.load({
           if (draft.indexOf('我批注了以下') !== -1) return
           var block = buildBlock()
           shell.setDraft(block + '\n' + draft)
+          annotationAttached = true
           console.log('[annotation] 批注块已拼入草稿，回车将随消息发送（' + ui.quotes.length + ' 条）')
         } catch (err) {
           console.warn('[annotation] 批注拼稿失败：', err)
@@ -1378,6 +1379,9 @@ window.__ModuleLoader__.load({
 
       // ---------- 发送完成监听（草稿从有内容变空 → 清空批注集） ----------
       var inputUnsub = null
+      // 仅当批注块真正拼入过草稿（用户按过回车）才在草稿清空时清除批注，
+      // 避免普通草稿编辑（打字后删字）误触发「已发送」判定而清空批注集。
+      var annotationAttached = false
       function watchInputDraft() {
         if (typeof inputUnsub === 'function') { inputUnsub(); inputUnsub = null }
         var id = sessions.list.getSnapshot().current
@@ -1394,11 +1398,12 @@ window.__ModuleLoader__.load({
             if (ui.quotes.length === 0) return
             // 发送完成：草稿从有内容变空 → 脚标消失、编号下次从 1 开始；
             // 同时在刚发出的用户消息气泡上贴「N 条批注」标签。
-            if (wasHad && d === '') {
+            if (wasHad && d === '' && annotationAttached) {
               var sentItems = ui.quotes.map(function (q) {
                 return { text: q.text, note: q.note || '' }
               })
               ui.quotes = []
+              annotationAttached = false
               tipLayer.textContent = ''
               updateChip()
               renderMarkers()
@@ -1752,6 +1757,7 @@ window.__ModuleLoader__.load({
         lastSessionId = cur
         if (ui.mode !== 'closed') closeToolbar()
         ui.quotes = []
+        annotationAttached = false
         ui.noteDraft = ''
         tipLayer.textContent = ''
         updateChip()
