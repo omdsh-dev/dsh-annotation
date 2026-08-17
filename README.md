@@ -58,8 +58,7 @@ dsh plugin --profile web add git+https://github.com/omdsh-dev/dsh-annotation.git
 # local path install (development / debugging)
 cd /path/to/dsh-annotation
 dsh plugin --profile web add .
-# restart the web service
-launchctl kickstart -k "gui/$(id -u)/com.dsh.web"
+# restart the web service — see "Restarting the web service" below
 ```
 
 | Do | Don't |
@@ -72,6 +71,22 @@ Self-check:
 dsh --profile web --dump-config | rg "id: dsh-annotation"   # must be exactly 1 line
 curl -s -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:3080/plugins/@omdsh-dev/dsh-annotation/client.js"   # 200
 ```
+
+## Restarting the web service
+
+Pick the command for your platform:
+
+```sh
+# macOS (launchd)
+launchctl kickstart -k "gui/$(id -u)/com.dsh.web"
+
+# WSL / Linux with systemd user services
+# The unit name may differ by install method; check with:
+#   systemctl --user list-units | rg dsh
+systemctl --user restart dsh-web
+```
+
+Environments without a service manager (e.g. some containers) often need **no restart at all**: `client.js` is served per request with no caching, so a hard refresh (Cmd/Ctrl+Shift+R) picks up plugin changes. The self-check commands above are platform-neutral.
 
 ## Architecture notes
 

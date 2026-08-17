@@ -58,8 +58,7 @@ dsh plugin --profile web add git+https://github.com/omdsh-dev/dsh-annotation.git
 # 本地路径安装（开发调试）
 cd /path/to/dsh-annotation
 dsh plugin --profile web add .
-# 重启 web
-launchctl kickstart -k "gui/$(id -u)/com.dsh.web"
+# 重启 web —— 见下方「重启 web 服务」
 ```
 
 | 做 | 不做 |
@@ -72,6 +71,22 @@ launchctl kickstart -k "gui/$(id -u)/com.dsh.web"
 dsh --profile web --dump-config | rg "id: dsh-annotation"   # 必须恰好 1 行
 curl -s -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:3080/plugins/@omdsh-dev/dsh-annotation/client.js"   # 200
 ```
+
+## 重启 web 服务
+
+按平台选择对应命令：
+
+```sh
+# macOS（launchd）
+launchctl kickstart -k "gui/$(id -u)/com.dsh.web"
+
+# WSL / Linux（systemd 用户服务）
+# 服务名可能因安装方式而异，可用以下命令确认：
+#   systemctl --user list-units | rg dsh
+systemctl --user restart dsh-web
+```
+
+没有服务管理器的环境（如部分容器）通常**不需要重启**：`client.js` 按请求读取、no-cache，硬刷新（Cmd/Ctrl+Shift+R）即可加载插件改动。上面的自检命令跨平台通用。
 
 ## 架构要点
 
