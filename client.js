@@ -876,7 +876,10 @@ window.__ModuleLoader__.load({
         // 批注清单 + 用户输入的问题。用户始终看不到文本被塞进去。
         // IME 铁律（v1.3.10 修了 nativeEvent.keyCode；v1.3.11 补 compositionend
         // 后 Enter keyCode=13 的时序洞）：合成期 / 上屏确认 Enter 绝不能 setDraft。
-        if (e.key === 'Enter' && ui.quotes.length > 0 && !isImeKeyBlocked(e)) {
+        // 修饰键守卫（v1.3.18）：只拦裸 Enter——Shift+Enter 换行、Ctrl/Meta+Enter
+        // 官方 accelerated 提交、以及浏览器默认换行路径都不应触发拼稿。
+        if (e.key === 'Enter' && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey
+          && ui.quotes.length > 0 && !isImeKeyBlocked(e)) {
           var ta = e.target
           if (ta instanceof HTMLTextAreaElement && ta.closest && ta.closest('[data-composer-card]') !== null) {
             attachAndSend()
