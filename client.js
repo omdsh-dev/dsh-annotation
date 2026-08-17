@@ -2,9 +2,9 @@
 //
 // 手写 CJS + ModuleLoader 包装（同 omdsh-dev navbar/greeter 模式，零构建
 // 步骤）：纯 DOM 自渲染，无任何 @deepseek-ai 值导入（bundle purity gate 合规）；
-// cordis 服务经 exports.inject 的字符串名接入（sessions / conversation）。
+// cordis 服务经 exports.inject 的字符串名接入（sessions / conversation / locale）。
 //
-// v1.3.x · 自包含批注流（取代 v0.9 chip 设计与 v1.0 发送面板）：
+// v1.4.x · 自包含批注流（取代 v0.9 chip 设计与 v1.0 发送面板）：
 //   1. 选中助手文字 → 工具条「批注」→ 写批注（可留空 = 仅标记原文）
 //   2. 保存后原文亮蓝编号 + 高亮（纯视觉，不弹窗）；跨消息/跨回合连续累积
 //   3. 输入框旁「批注 ×N」标签：悬浮可见全部内容、可逐条删除
@@ -19,11 +19,14 @@
 //      可悬浮芯片（数据取最近一条带标签用户消息的 tag.__annotationItems，刷新
 //      自动重建；改 DOM 前先快照 TreeWalker 收集的文本节点再逐个替换，遍历
 //      中途 replaceChild 会让 walker 指针失效）
+//   7. 语言跟随 DSH locale 服务（v1.4）：UI 文案与协议块 zh/en 双语、实时切换，
+//      隐藏手术与反解析同时兼容「提问：」/「Ask:」与「问题：」老格式
 //
-// 消息格式：我批注了以下 N 处内容…\n\n1. 原文\n   批注：…\n\n
+// 消息格式（zh）：我批注了以下 N 处内容…\n\n1. 原文\n   批注：…\n\n
 //           请用「Annotation 1：…」…\n\n提问：
-// （分隔标记用「提问：」而非「问题：」——标题行「回答我的问题：」里也含它，
-//   气泡隐藏手术会误命中）
+// （en 用 I annotated the following N passage(s)… + Note: … + Ask:；
+//   zh 分隔标记用「提问：」而非「问题：」——标题行「回答我的问题：」里也含
+//   它，气泡隐藏手术会误命中）
 //
 // 不依赖发送完成事件链：watchInputDraft 在初始化时会话未加载时会失效，仅作
 // 暂存入口；气泡装饰走 MutationObserver + 轮询。
@@ -153,6 +156,121 @@ window.__ModuleLoader__.load({
       ].join('\n')
       document.head.appendChild(style)
     }
+
+    // ============================== i18n（zh / en） ==============================
+    // UI 文案与批注协议块双语化：当前语言由 DSH 的 locale 服务驱动
+    // （ctx.locale.getSnapshot().active + subscribe()），服务缺失时回退 zh。
+    // 历史消息的隐藏手术与反解析同时兼容 zh/en 标记，跨语言切换不丢批注。
+    var STR = {
+      zh: {
+        actions: {
+          annotate: '批注',
+          already: '已批注',
+          annotateTitle: '为选中的内容写一条批注',
+          alreadyTitle: '这段内容已在批注清单中',
+        },
+        edit: {
+          addTitle: '添加批注',
+          editTitle: '编辑批注',
+          placeholder: '写下批注…（可留空，保存后仅标记原文）',
+          save: '保存批注',
+        },
+        common: { cancel: '取消' },
+        error: { noSelection: '没有选中的内容' },
+        chip: { count: '条批注' },
+        tip: { title: '批注（{n} 条）', notePrefix: '批注：', del: '删' },
+        bubble: { tag: '批注 ×{n}', title: '本消息携带批注（{n} 条）' },
+        reply: {
+          headWithQuote: '批注 {n} 的原文',
+          headNoQuote: '批注 {n}',
+          notePrefix: '你的批注：',
+          missing: '（未找到对应批注条目）',
+        },
+        toast: { attachFail: '批注拼稿失败，消息将不带批注发送：' },
+        block: {
+          head: '我批注了以下 {n} 处内容（编号与原文对应），请针对它们回答我的问题：',
+          notePrefix: '批注：',
+          format: '请用「Annotation 1：…」到「Annotation {n}：…」的格式，逐条回应上面每一条批注，最后再回答我的问题。',
+          marker: '提问：',
+        },
+      },
+      en: {
+        actions: {
+          annotate: 'Annotate',
+          already: 'Annotated',
+          annotateTitle: 'Write a note about the selected text',
+          alreadyTitle: 'This passage is already in your annotation list',
+        },
+        edit: {
+          addTitle: 'Add annotation',
+          editTitle: 'Edit annotation',
+          placeholder: 'Write a note… (optional; saving only marks the passage)',
+          save: 'Save annotation',
+        },
+        common: { cancel: 'Cancel' },
+        error: { noSelection: 'No text selected' },
+        chip: { count: ' annotation(s)' },
+        tip: { title: 'Annotations ({n})', notePrefix: 'Note: ', del: 'Del' },
+        bubble: { tag: 'Annotations ×{n}', title: 'This message carries {n} annotation(s)' },
+        reply: {
+          headWithQuote: 'Source of annotation {n}',
+          headNoQuote: 'Annotation {n}',
+          notePrefix: 'Your note: ',
+          missing: '(no matching annotation found)',
+        },
+        toast: { attachFail: 'Failed to attach annotations; the message will be sent without them: ' },
+        block: {
+          head: 'I annotated the following {n} passage(s) (the numbers match the quotes below); please respond to them when answering my question:',
+          notePrefix: 'Note: ',
+          format: 'Please respond to each annotation in the format "Annotation 1: …" through "Annotation {n}: …", then answer my question.',
+          marker: 'Ask:',
+        },
+      },
+    }
+    var currentLang = 'zh'
+    function setLang(id) {
+      currentLang = (id === 'en' || id === 'zh') ? id : 'zh'
+    }
+    function dictVal(lang, key) {
+      var cur = STR[lang]
+      var parts = key.split('.')
+      for (var i = 0; i < parts.length; i++) {
+        if (cur === undefined || cur === null) return undefined
+        cur = cur[parts[i]]
+      }
+      return cur
+    }
+    /** @param {string} key @param {Object<string, string|number>} [params] */
+    function t(key, params) {
+      var s = dictVal(currentLang, key)
+      if (s === undefined) s = dictVal('zh', key)
+      if (s === undefined) s = key
+      if (params !== undefined && params !== null) {
+        for (var k in params) {
+          if (Object.prototype.hasOwnProperty.call(params, k)) {
+            s = s.split('{' + k + '}').join(String(params[k]))
+          }
+        }
+      }
+      return s
+    }
+    // 批注块头部哨兵（zh/en 都识别；兼容历史消息与跨语言切换）。
+    var BLOCK_HEADS = { zh: '我批注了以下', en: 'I annotated the following' }
+    function hasAnnotationBlock(text) {
+      return text.indexOf(BLOCK_HEADS.zh) !== -1 || text.indexOf(BLOCK_HEADS.en) !== -1
+    }
+    // 气泡隐藏手术的分隔标记：当前语言优先，另保留另一语言与「问题：」老格式。
+    var BLOCK_MARKERS = {
+      zh: ['\n提问：', '提问：', '\n问题：', '问题：'],
+      en: ['\nAsk:', 'Ask:'],
+    }
+    function blockMarkers() {
+      return currentLang === 'en'
+        ? BLOCK_MARKERS.en.concat(BLOCK_MARKERS.zh)
+        : BLOCK_MARKERS.zh.concat(BLOCK_MARKERS.en)
+    }
+    // 反解析用的段落级分隔标记（批注块按协议生成，均以 \n\n 开头）。
+    var PARSE_MARKERS = ['\n\n提问：', '\n\n问题：', '\n\nAsk:']
 
     // ============================== 工具 ==============================
     // 助手行判别：0810 snapshot 起助手消息行 = ChatNodeSeat 上的
@@ -924,8 +1042,8 @@ window.__ModuleLoader__.load({
           var already = ui.quotes.some(function (q) { return q.text === ui.quote })
           bar.appendChild(ghostButton(
             already ? null : ICONS.plus,
-            already ? '已批注' : '批注',
-            already ? '这段内容已在批注清单中' : '为选中的内容写一条批注',
+            already ? t('actions.already') : t('actions.annotate'),
+            already ? t('actions.alreadyTitle') : t('actions.annotateTitle'),
             already,
             enterEditing,
           ))
@@ -941,9 +1059,9 @@ window.__ModuleLoader__.load({
           head.className = 'dsh-ann-card-head'
           var title = document.createElement('div')
           title.className = 'dsh-ann-card-title'
-          title.textContent = ui.editingId !== null ? '编辑批注' : '添加批注'
+          title.textContent = ui.editingId !== null ? t('edit.editTitle') : t('edit.addTitle')
           head.appendChild(title)
-          head.appendChild(iconButton('dsh-ann-icon', ICONS.close, '取消', closeToolbar))
+          head.appendChild(iconButton('dsh-ann-icon', ICONS.close, t('common.cancel'), closeToolbar))
           card.appendChild(head)
           var quote = document.createElement('div')
           quote.className = 'dsh-ann-quote'
@@ -952,7 +1070,7 @@ window.__ModuleLoader__.load({
           card.appendChild(quote)
           var ta = document.createElement('textarea')
           ta.className = 'dsh-ann-input'
-          ta.placeholder = '写下批注…（可留空，保存后仅标记原文）'
+          ta.placeholder = t('edit.placeholder')
           ta.value = ui.noteDraft
           ta.spellcheck = false
           ta.addEventListener('input', function () { ui.noteDraft = ta.value })
@@ -965,13 +1083,13 @@ window.__ModuleLoader__.load({
           var cancel = document.createElement('button')
           cancel.className = 'dsh-ann-cancel'
           cancel.type = 'button'
-          cancel.textContent = '取消'
+          cancel.textContent = t('common.cancel')
           cancel.addEventListener('click', closeToolbar)
           var save = document.createElement('button')
           save.type = 'button'
           save.className = 'dsh-ann-action'
           save.appendChild(ICONS.check())
-          save.appendChild(document.createTextNode('保存批注'))
+          save.appendChild(document.createTextNode(t('edit.save')))
           save.addEventListener('click', saveAnnotation)
           row.appendChild(cancel)
           row.appendChild(save)
@@ -1164,16 +1282,17 @@ window.__ModuleLoader__.load({
       /** 组装批注块（编号 + 原文 + 批注，结尾带唯一的「提问：」分隔标记——
        *  不用「问题：」是因为标题行「回答我的问题：」里也含它，气泡隐藏手术会误命中）。 */
       function buildBlock() {
+        var n = ui.quotes.length
         var parts = ui.quotes.map(function (q, i) {
           var s = (i + 1) + '. ' + q.text.replace(/\n/g, '\n   ')
           if (q.note !== undefined && q.note.trim() !== '') {
-            s += '\n   批注：' + q.note.replace(/\n/g, '\n    ')
+            s += '\n   ' + t('block.notePrefix') + q.note.replace(/\n/g, '\n    ')
           }
           return s
         })
-        return '我批注了以下 ' + ui.quotes.length + ' 处内容（编号与原文对应），请针对它们回答我的问题：\n\n'
+        return t('block.head', { n: n }) + '\n\n'
           + parts.join('\n\n')
-          + '\n\n请用「Annotation 1：…」到「Annotation ' + ui.quotes.length + '：…」的格式，逐条回应上面每一条批注，最后再回答我的问题。\n\n提问：'
+          + '\n\n' + t('block.format', { n: n }) + '\n\n' + t('block.marker')
       }
 
       /** 提交前把批注块拼进 composer 草稿（随回车一起发送）。 */
@@ -1186,15 +1305,15 @@ window.__ModuleLoader__.load({
           var shell = ctx.conversation.input.for(scoped)
           var st = shell.state.getSnapshot()
           var draft = st.draft || ''
-          // 草稿已含批注块（上次追加未发送）→ 不重复追加。
-          if (draft.indexOf('我批注了以下') !== -1) return
+          // 草稿已含批注块（上次追加未发送）→ 不重复追加（zh/en 双哨兵）。
+          if (hasAnnotationBlock(draft)) return
           var block = buildBlock()
           shell.setDraft(block + '\n' + draft)
           annotationAttached = true
           console.log('[annotation] 批注块已拼入草稿，回车将随消息发送（' + ui.quotes.length + ' 条）')
         } catch (err) {
           console.warn('[annotation] 批注拼稿失败：', err)
-          showToast('批注拼稿失败，消息将不带批注发送：' + (err && err.message ? err.message : err))
+          showToast(t('toast.attachFail') + (err && err.message ? err.message : err))
         }
       }
 
@@ -1215,7 +1334,7 @@ window.__ModuleLoader__.load({
 
       function saveAnnotation() {
         var text = ui.quote
-        if (text === '') { ui.error = '没有选中的内容'; render(); return }
+        if (text === '') { ui.error = t('error.noSelection'); render(); return }
         var note = ui.noteDraft.trim()
         // 编辑已有批注（点击角标进入）：按 id 更新批注内容。
         if (ui.editingId !== null) {
@@ -1298,7 +1417,7 @@ window.__ModuleLoader__.load({
         b.style.cssText = 'color:var(--dsw-alias-text-accent,#4c9aff);font-weight:700;'
         b.textContent = String(ui.quotes.length)
         chipLayer.appendChild(b)
-        chipLayer.appendChild(document.createTextNode('条批注'))
+        chipLayer.appendChild(document.createTextNode(t('chip.count')))
         var card = document.querySelector('[data-composer-card]')
         if (card === null) { chipLayer.style.display = 'none'; return }
         var r = card.getBoundingClientRect()
@@ -1335,7 +1454,7 @@ window.__ModuleLoader__.load({
         el.style.cssText = 'position:fixed;z-index:1160;width:300px;max-width:calc(100vw - 16px);padding:10px 12px;border-radius:12px;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu,#2c2c2e);box-shadow:var(--dsw-shadow-lv3);font-family:var(--dsw-font-family,system-ui);font-size:12px;color:var(--dsw-alias-label-primary);'
         var head = document.createElement('div')
         head.style.cssText = 'font-weight:600;margin-bottom:6px;'
-        head.textContent = '批注（' + ui.quotes.length + ' 条）'
+        head.textContent = t('tip.title', { n: ui.quotes.length })
         el.appendChild(head)
         for (var i = 0; i < ui.quotes.length; i++) {
           var q = ui.quotes[i]
@@ -1352,12 +1471,12 @@ window.__ModuleLoader__.load({
           if (q.note !== undefined && q.note.trim() !== '') {
             var note = document.createElement('div')
             note.style.cssText = 'font-size:11px;color:var(--dsw-alias-label-secondary);margin:2px 0 0 22px;word-break:break-word;'
-            note.textContent = '批注：' + truncate(q.note, 60)
+            note.textContent = t('tip.notePrefix') + truncate(q.note, 60)
             item.appendChild(note)
           }
           var del = document.createElement('button')
           del.type = 'button'
-          del.textContent = '删'
+          del.textContent = t('tip.del')
           del.style.cssText = 'margin-left:8px;background:transparent;border:1px solid rgba(255,107,107,.4);color:#ff8a8a;border-radius:6px;font-size:10px;cursor:pointer;padding:1px 6px;'
           ;(function (qid) {
             del.addEventListener('click', function (ev) {
@@ -1434,18 +1553,18 @@ window.__ModuleLoader__.load({
             nodes.push(n)
             full += n.nodeValue || ''
           }
-          // 标记定位：优先「\n提问：」→「\n问题：」→ 裸「提问：」→ 裸「问题：」。
+          // 标记定位：当前语言优先（zh「提问：」/ en「Ask:」，均先带「\n」再裸匹配），
+          // 另兼容另一语言与「问题：」老格式，保证历史消息跨语言切换可解析。
+          var markers = blockMarkers()
           var marker = -1
-          var pairs = [['\n提问：', '\n问题：'], ['提问：', '问题：']]
-          for (var p = 0; p < pairs.length && marker === -1; p++) {
-            for (var k = 0; k < 2; k++) {
-              var idx = full.lastIndexOf(pairs[p][k])
-              if (idx !== -1) { marker = idx; break }
-            }
+          var markerStr = ''
+          for (var p = 0; p < markers.length && marker === -1; p++) {
+            var idx = full.lastIndexOf(markers[p])
+            if (idx !== -1) { marker = idx; markerStr = markers[p] }
           }
           if (marker === -1) return false
-          // 标记若带「\n」前缀（段落起头），切掉长度 4（\n提问：），否则 3（提问：）。
-          var skip = full.charAt(marker) === '\n' ? 4 : 3
+          // 连同分隔标记一起切掉，保留其后的问题。
+          var skip = markerStr.length
           // 定位到具体文本节点。
           var pos = 0
           var ti = -1
@@ -1479,8 +1598,11 @@ window.__ModuleLoader__.load({
         try {
           var b = row.querySelector('[class*="bubble"]')
           var text = (b ? b.textContent : '') || ''
-          var mi = text.lastIndexOf('\n\n提问：')
-          if (mi === -1) mi = text.lastIndexOf('\n\n问题：')
+          var mi = -1
+          for (var mk = 0; mk < PARSE_MARKERS.length; mk++) {
+            var pmi = text.lastIndexOf(PARSE_MARKERS[mk])
+            if (pmi > mi) mi = pmi
+          }
           if (mi !== -1) text = text.slice(0, mi)
           var nl = text.indexOf('\n\n')
           var body = nl === -1 ? '' : text.slice(nl + 2)
@@ -1491,7 +1613,7 @@ window.__ModuleLoader__.load({
             if (mm === null) continue
             var item = mm[2]
             var note = ''
-            var nm = /\n   批注：([\s\S]*)$/.exec(item)
+            var nm = /\n\s*(?:批注：|Note:)\s*([\s\S]*)$/.exec(item)
             if (nm !== null) { note = nm[1].trim(); item = item.slice(0, nm.index) }
             out.push({ text: item.replace(/\n   /g, '\n').trim(), note: note })
           }
@@ -1505,7 +1627,7 @@ window.__ModuleLoader__.load({
         var bubble = row.querySelector('[class*="bubble"]') || row
         var tag = document.createElement('span')
         tag.setAttribute('data-annotation-bubble-tag', '')
-        tag.textContent = '批注 ×' + items.length
+        tag.textContent = t('bubble.tag', { n: items.length })
         tag.style.cssText = 'display:inline-flex;align-items:center;height:18px;padding:0 8px;margin:4px 0 0 4px;border-radius:9px;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu,#2c2c2e);color:var(--dsw-alias-label-secondary);font-family:var(--dsw-font-family,system-ui);font-size:10px;cursor:default;'
         ;(function (list) {
           tag.addEventListener('mouseenter', function () {
@@ -1515,7 +1637,7 @@ window.__ModuleLoader__.load({
             el.style.cssText = 'position:fixed;z-index:1160;width:300px;max-width:calc(100vw - 16px);padding:10px 12px;border-radius:12px;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu,#2c2c2e);box-shadow:var(--dsw-shadow-lv3);font-family:var(--dsw-font-family,system-ui);font-size:12px;color:var(--dsw-alias-label-primary);'
             var head = document.createElement('div')
             head.style.cssText = 'font-weight:600;margin-bottom:6px;'
-            head.textContent = '本消息携带批注（' + list.length + ' 条）'
+            head.textContent = t('bubble.title', { n: list.length })
             el.appendChild(head)
             for (var i = 0; i < list.length; i++) {
               var item = document.createElement('div')
@@ -1531,7 +1653,7 @@ window.__ModuleLoader__.load({
               if (list[i].note !== '') {
                 var note = document.createElement('div')
                 note.style.cssText = 'font-size:11px;color:var(--dsw-alias-label-secondary);margin:2px 0 0 22px;word-break:break-word;'
-                note.textContent = '批注：' + truncate(list[i].note, 60)
+                note.textContent = t('tip.notePrefix') + truncate(list[i].note, 60)
                 item.appendChild(note)
               }
               el.appendChild(item)
@@ -1676,7 +1798,7 @@ window.__ModuleLoader__.load({
           el.style.cssText = 'position:fixed;z-index:1160;width:320px;max-width:calc(100vw - 16px);padding:10px 12px;border-radius:12px;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu,#2c2c2e);box-shadow:var(--dsw-shadow-lv3);font-family:var(--dsw-font-family,system-ui);font-size:12px;color:var(--dsw-alias-label-primary);'
           var head = document.createElement('div')
           head.style.cssText = 'font-weight:600;margin-bottom:6px;'
-          head.textContent = item !== undefined ? '批注 ' + num + ' 的原文' : '批注 ' + num
+          head.textContent = item !== undefined ? t('reply.headWithQuote', { n: num }) : t('reply.headNoQuote', { n: num })
           el.appendChild(head)
           if (item !== undefined) {
             var quote = document.createElement('div')
@@ -1686,13 +1808,13 @@ window.__ModuleLoader__.load({
             if (item.note !== '') {
               var note = document.createElement('div')
               note.style.cssText = 'font-size:11px;color:var(--dsw-alias-text-accent,#4c9aff);margin-top:6px;word-break:break-word;'
-              note.textContent = '你的批注：' + truncate(item.note, 80)
+              note.textContent = t('reply.notePrefix') + truncate(item.note, 80)
               el.appendChild(note)
             }
           } else {
             var none = document.createElement('div')
             none.style.cssText = 'font-size:11px;color:var(--dsw-alias-label-tertiary);'
-            none.textContent = '（未找到对应批注条目）'
+            none.textContent = t('reply.missing')
             el.appendChild(none)
           }
           tipLayer.appendChild(el)
@@ -1722,7 +1844,7 @@ window.__ModuleLoader__.load({
             if (el.hasAttribute('data-pending-steering')) continue
             if (el.querySelector('[data-annotation-bubble-tag]') !== null) continue
             var b = el.querySelector('[class*="bubble"]')
-            if (b === null || (b.textContent || '').indexOf('我批注了以下') === -1) continue
+            if (b === null || !hasAnnotationBlock(b.textContent || '')) continue
             // 最新一条优先消费发送时暂存的数据；其余从气泡文本反解析（须在隐藏前）。
             var items = null
             if (i === rows.length - 1 && pendingDeco.length > 0) items = pendingDeco.pop().items
@@ -1750,6 +1872,37 @@ window.__ModuleLoader__.load({
       function kickDecorate() {
         decorateAll()
         if (decoTimer === null) decoTimer = setInterval(decorateAll, 1000)
+      }
+
+      // ---------- locale 服务（zh/en）订阅与实时回流 ----------
+      // locale.subscribe() 触发时：重绘打开中的浮层、更新输入框旁计数与历史气泡标签。
+      // 服务缺失（旧 host / 测试环境）时保持 zh，全部功能不变。
+      var localeUnsub = null
+      function applyLocale() {
+        var next = 'zh'
+        try {
+          if (ctx.locale !== undefined && ctx.locale !== null
+            && typeof ctx.locale.getSnapshot === 'function') {
+            var snap = ctx.locale.getSnapshot()
+            if (snap !== undefined && snap !== null && snap.active) next = String(snap.active)
+          }
+        } catch (_) { /* keep zh */ }
+        if (next === currentLang) return
+        setLang(next)
+        if (ui.mode !== 'closed') render()
+        updateChip()
+        // 打开的悬浮面板按新语言关闭（下次 hover 以新语言重建）。
+        tipLayer.textContent = ''
+        var tags = document.querySelectorAll('[data-annotation-bubble-tag]')
+        for (var i = 0; i < tags.length; i++) {
+          var items = tags[i].__annotationItems
+          if (Array.isArray(items)) tags[i].textContent = t('bubble.tag', { n: items.length })
+        }
+      }
+      applyLocale()
+      if (ctx.locale !== undefined && ctx.locale !== null
+        && typeof ctx.locale.subscribe === 'function') {
+        try { localeUnsub = ctx.locale.subscribe(applyLocale) } catch (_) { localeUnsub = null }
       }
 
       // ---------- 会话切换时收起浮窗并清空批注 ----------
@@ -1787,6 +1940,7 @@ window.__ModuleLoader__.load({
         observer.disconnect()
         if (typeof unsub === 'function') unsub()
         if (typeof inputUnsub === 'function') inputUnsub()
+        if (typeof localeUnsub === 'function') localeUnsub()
         if (decoTimer !== null) { clearInterval(decoTimer); decoTimer = null }
         chipLayer.remove()
         tipLayer.remove()
@@ -1796,7 +1950,7 @@ window.__ModuleLoader__.load({
     }
 
     exports.name = '@omdsh-dev/dsh-annotation'
-    exports.inject = ['sessions', 'conversation']
+    exports.inject = ['sessions', 'conversation', 'locale']
     exports.apply = apply
 
     return module.exports
