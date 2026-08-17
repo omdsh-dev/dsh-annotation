@@ -91,15 +91,17 @@ systemctl --user restart dsh-web
 ## 架构要点
 
 - **纯浏览器端**：全部能力在 `client.js`（hand-written CJS bundle，无构建步骤，按请求读取 no-cache）
-- **消息格式**：
+- **消息格式**（跟随 DSH `locale` 语言偏好，zh/en 双语）：
 
   ```
-  我批注了以下 N 处内容…\n\n1. 原文\n   批注：…\n\n请用「Annotation 1：…」…\n\n提问：
+  zh：我批注了以下 N 处内容…\n\n1. 原文\n   批注：…\n\n请用「Annotation 1：…」…\n\n提问：
+  en：I annotated the following N passage(s)…\n\n1. quote\n   Note: …\n\nPlease respond… "Annotation 1: …"…\n\nAsk:
   ```
 
-  （分隔标记用「提问：」而非「问题：」——标题行「回答我的问题：」里也含它，气泡隐藏手术会误命中）
+  （zh 分隔标记用「提问：」而非「问题：」——标题行「回答我的问题：」里也含它，气泡隐藏手术会误命中；en 用 `Ask:`。隐藏手术与反解析同时兼容两种语言及「问题：」老格式）
 - **气泡隐藏**：用户气泡是纯文本渲染（MessageText 单节点，非 markdown）；MutationObserver 微任务阶段（绘制前）按最后一个 `\n提问：` 切掉批注块、贴「批注 ×N」标签；1s 轮询兜底 + 刷新后历史消息自动修复
 - **回复芯片**：回复流式结束后（`data-streaming` 移除），把「Annotation N：」替换为可悬浮芯片；条目数据存于最近一条带批注标签的用户消息上（`tag.__annotationItems`），刷新后自动重建；**改 DOM 前先快照 TreeWalker 收集的文本节点再逐个替换**（遍历中途 replaceChild 会让 walker 指针失效，只处理到第一个节点）
+- **语言跟随**：UI 文案与批注协议块跟随 DSH `locale` 服务（zh/en，实时切换）；历史气泡跨语言可解析；locale 服务缺失时回退 zh
 - **IME 安全**：Enter 拦截带 `isComposing`/keyCode 229 守卫；不 DOM 硬改 composer textarea；`setDraft` 仅在提交前一刻拼批注块，不覆盖用户草稿
 - **不依赖发送完成事件链**：气泡装饰走 MutationObserver + 轮询（`watchInputDraft` 在初始化时会话未加载时会失效，仅作暂存入口）
 - **聚焦对话兼容**：支持 [dsh-focus-chat](https://github.com/dingyi222666/dsh-focus-chat) 的聚焦会话视图——其助手行是 `[data-focus-flow]` 内 class 含 `*_assistant`（CSS Modules 哈希名）的容器（流式期间行带 `data-streaming`）；选区批注、回复芯片、角标重新定位在聚焦 tab 与主视图一样可用
@@ -108,6 +110,7 @@ systemctl --user restart dsh-web
 
 | 版本 | 内容 |
 |---|---|
+| v1.4.x | 语言跟随：zh/en UI 文案与批注协议块，经 DSH `locale` 服务实时切换 |
 | v1.3.x | 回复逐条对照：格式指令注入 + 「Annotation N：」可悬浮芯片（TreeWalker 快照修复） |
 | v1.2.x | 气泡隐藏批注块：MutationObserver 微任务零闪烁 + 轮询兜底 + 历史消息修复 |
 | v1.x | 自包含批注流（取代 v0.9 chip 设计）：capture Enter 拼稿随消息发送 |
