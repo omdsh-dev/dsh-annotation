@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.4.1] - 2026-08-18
+### 修复
+- **恢复 Cmd/Ctrl+Enter 纯批注直接发送（issue #17）**：v1.3.18 为修 issue #10 把修饰键 Enter 全部排除，导致空草稿时 Cmd/Ctrl+Enter 无法直接发送纯批注。现改为只排除 Shift+Enter / Alt+Enter，裸 Enter 与 Cmd/Ctrl+Enter 都会先 `attachAndSend()`；Cmd/Ctrl+Enter 会在 capture 阶段主动 `submit('queue')`，避免 composer 的 accelerated 路径在「运行中 + 有排队消息」时误走 steerQueue 而把批注块留在输入框。
+
 ## [1.4.0] - 2026-08-18
 ### 新功能
 - **语言跟随 DSH（issue #11）**：接入 `@deepseek-ai/dsh-client-locale` 的 `locale` 服务（`ctx.locale.getSnapshot().active` + `subscribe()`），UI 文案与批注协议块按 `zh`/`en` 双语生成与实时切换；气泡隐藏手术与反解析同时兼容 `提问：`/`Ask:`、`批注：`/`Note: ` 及「问题：」老格式，历史消息跨语言切换可解析；回复芯片保持语言中立的 `Annotation N`；locale 服务缺失时回退 zh，行为与旧版一致。

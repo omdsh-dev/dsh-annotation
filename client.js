@@ -994,13 +994,32 @@ window.__ModuleLoader__.load({
         // 批注清单 + 用户输入的问题。用户始终看不到文本被塞进去。
         // IME 铁律（v1.3.10 修了 nativeEvent.keyCode；v1.3.11 补 compositionend
         // 后 Enter keyCode=13 的时序洞）：合成期 / 上屏确认 Enter 绝不能 setDraft。
-        // 修饰键守卫（v1.3.18）：只拦裸 Enter——Shift+Enter 换行、Ctrl/Meta+Enter
-        // 官方 accelerated 提交、以及浏览器默认换行路径都不应触发拼稿。
-        if (e.key === 'Enter' && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey
+        // 修饰键守卫（v1.3.18 修 issue #10）：Shift+Enter 换行、Alt+Enter 默认路径
+        // 不触发拼稿；裸 Enter 和 Cmd/Ctrl+Enter（官方 accelerated 提交）都允许。
+        // Cmd/Ctrl+Enter 需要在这里直接提交：composer 的 accelerated 路径在
+        // 「运行中 + 有排队消息」时会走 steerQueue，而不是发送当前草稿；我们在
+        // capture 阶段 setDraft 后 stopPropagation，主动 submit('queue')，保证
+        // 纯批注能直接发出，同时不会把批注块明文留在输入框。
+        if (e.key === 'Enter' && !e.shiftKey && !e.altKey
           && ui.quotes.length > 0 && !isImeKeyBlocked(e)) {
           var ta = e.target
           if (ta instanceof HTMLTextAreaElement && ta.closest && ta.closest('[data-composer-card]') !== null) {
-            attachAndSend()
+            var attached = attachAndSend()
+            if (attached && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault()
+              e.stopPropagation()
+              var current = sessions.list.getSnapshot().current
+              if (current !== undefined) {
+                var scoped = sessions.scope(current)
+                if (scoped !== undefined) {
+                  try {
+                    ctx.conversation.input.for(scoped).submit('queue')
+                  } catch (err) {
+                    console.warn('[annotation] Cmd/Ctrl+Enter 直接提交失败：', err)
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -1295,25 +1314,28 @@ window.__ModuleLoader__.load({
           + '\n\n' + t('block.format', { n: n }) + '\n\n' + t('block.marker')
       }
 
-      /** 提交前把批注块拼进 composer 草稿（随回车一起发送）。 */
+      /** 提交前把批注块拼进 composer 草稿（随回车一起发送）。
+       *  返回 true 表示批注块已在草稿中（本次刚拼入，或之前已拼入未发送）。 */
       function attachAndSend() {
         var current = sessions.list.getSnapshot().current
-        if (current === undefined) return
+        if (current === undefined) return false
         try {
           var scoped = sessions.scope(current)
-          if (scoped === undefined) return
+          if (scoped === undefined) return false
           var shell = ctx.conversation.input.for(scoped)
           var st = shell.state.getSnapshot()
           var draft = st.draft || ''
           // 草稿已含批注块（上次追加未发送）→ 不重复追加（zh/en 双哨兵）。
-          if (hasAnnotationBlock(draft)) return
+          if (hasAnnotationBlock(draft)) return true
           var block = buildBlock()
           shell.setDraft(block + '\n' + draft)
           annotationAttached = true
           console.log('[annotation] 批注块已拼入草稿，回车将随消息发送（' + ui.quotes.length + ' 条）')
+          return true
         } catch (err) {
           console.warn('[annotation] 批注拼稿失败：', err)
           showToast(t('toast.attachFail') + (err && err.message ? err.message : err))
+          return false
         }
       }
 
