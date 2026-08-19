@@ -1,6 +1,6 @@
 {
   "name": "@omdsh-dev/dsh-annotation",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "type": "module",
   "description": "DSH Web selection-annotation plugin: select assistant text, annotate (optional), and press Enter to send the annotation block with your message — the model replies to each annotation by number, with hoverable chips in the reply.",
   "main": "lib/index.js",
@@ -26,7 +26,8 @@
   ],
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\" && tsc -p tsconfig.json",
-    "check": "npm run build && node --check lib/index.js && node --check client.js",
+    "test": "node --test test/*.test.mjs",
+    "check": "npm run build && node --check lib/index.js && node --check client.js && npm test",
     "prepack": "npm run check"
   },
   "publishConfig": {
