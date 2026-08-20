@@ -186,7 +186,10 @@ window.__ModuleLoader__.load({
           notePrefix: '你的批注：',
           missing: '（未找到对应批注条目）',
         },
-        toast: { attachFail: '批注拼稿失败，消息将不带批注发送：' },
+        toast: {
+          attachFail: '批注拼稿失败，消息将不带批注发送：',
+          skipCommand: '本条是斜杠命令，未拼入批注；批注已保留，将随下一条消息发送',
+        },
         block: {
           head: '我批注了以下 {n} 处内容（编号与原文对应），请针对它们回答我的问题：',
           notePrefix: '批注：',
@@ -218,7 +221,10 @@ window.__ModuleLoader__.load({
           notePrefix: 'Your note: ',
           missing: '(no matching annotation found)',
         },
-        toast: { attachFail: 'Failed to attach annotations; the message will be sent without them: ' },
+        toast: {
+          attachFail: 'Failed to attach annotations; the message will be sent without them: ',
+          skipCommand: 'Slash command detected — annotations stay pending and will attach to your next message',
+        },
         block: {
           head: 'I annotated the following {n} passage(s) (the numbers match the quotes below); please respond to them when answering my question:',
           notePrefix: 'Note: ',
@@ -1319,6 +1325,12 @@ window.__ModuleLoader__.load({
         return !(e.ctrlKey || e.metaKey) || draft.trim() === ''
       }
 
+      /** 裸斜杠开头的草稿按宿主约定是命令（/goal、/model 等）：
+       *  宿主输入机靠「草稿以命令 token 开头」维持命令声明。 */
+      function isCommandDraft(draft) {
+        return draft.trimStart().charAt(0) === '/'
+      }
+
       /** 提交前把批注块拼进 composer 草稿（随回车一起发送）。
        *  返回 true 表示批注块已在草稿中（本次刚拼入，或之前已拼入未发送）。 */
       function attachAndSend(e) {
@@ -1331,6 +1343,13 @@ window.__ModuleLoader__.load({
           var st = shell.state.getSnapshot()
           var draft = st.draft || ''
           if (!shouldAttachForEnter(e, draft)) return false
+          // 斜杠命令不拼批注（issue #20）：批注块前置会破坏命令 token 前缀，
+          // 宿主 watchClaim 释放声明后 /goal 被降级为普通消息；后置追加则会
+          // 把块原样并入命令参数。命令草稿原样放行，批注保留待下一条消息。
+          if (isCommandDraft(draft)) {
+            showToast(t('toast.skipCommand'))
+            return false
+          }
           // 草稿已含批注块（上次追加未发送）→ 不重复追加（zh/en 双哨兵）。
           if (hasAnnotationBlock(draft)) return true
           var block = buildBlock()
