@@ -7,9 +7,31 @@ const match = source.match(/function shouldAttachForEnter\(e, draft\) \{[\s\S]*?
 assert.ok(match, 'client.js should define shouldAttachForEnter')
 const shouldAttachForEnter = Function(`return (${match[0]})`)()
 
+const cmdMatch = source.match(/function isCommandDraft\(draft\) \{[\s\S]*?\n      \}/)
+assert.ok(cmdMatch, 'client.js should define isCommandDraft')
+const isCommandDraft = Function(`return (${cmdMatch[0]})`)()
+
 test('快捷回车只接管空草稿的纯批注', () => {
   assert.equal(shouldAttachForEnter({ ctrlKey: true, metaKey: false }, ''), true)
   assert.equal(shouldAttachForEnter({ ctrlKey: false, metaKey: true }, '  '), true)
   assert.equal(shouldAttachForEnter({ ctrlKey: true, metaKey: false }, '用户问题'), false)
   assert.equal(shouldAttachForEnter({ ctrlKey: false, metaKey: false }, '用户问题'), true)
+})
+
+test('斜杠命令草稿不拼批注，命令原样放行（issue #20）', () => {
+  assert.equal(isCommandDraft('/goal 完成实验'), true)
+  assert.equal(isCommandDraft('  /model sonnet'), true)
+  assert.equal(isCommandDraft('用户问题'), false)
+  assert.equal(isCommandDraft(''), false)
+  assert.equal(isCommandDraft('路径 /usr/bin 不是命令'), false)
+})
+
+test('attachAndSend 在 setDraft 之前拦截命令草稿', () => {
+  const fn = source.match(/function attachAndSend\(e\) \{[\s\S]*?\n      \}/)
+  assert.ok(fn, 'client.js should define attachAndSend')
+  const guard = fn[0].indexOf('isCommandDraft')
+  const splice = fn[0].indexOf('setDraft')
+  assert.ok(guard !== -1, 'attachAndSend should guard with isCommandDraft')
+  assert.ok(splice !== -1, 'attachAndSend should call setDraft')
+  assert.ok(guard < splice, 'command guard must run before setDraft splices the block')
 })
