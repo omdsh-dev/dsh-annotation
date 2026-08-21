@@ -8,6 +8,8 @@
 
 <p align="center">DSH Web 选中批注插件：选文字 → 批注 → 回车随消息发给模型，回复按批注编号逐条对照</p>
 
+<p align="center"><strong>🌐 <a href="https://omdsh-dev.github.io/dsh-annotation/">在线产品站：在 DSH 中体验 dsh-annotation</a></strong></p>
+
 <p align="center">
   <img src="https://badgen.net/badge/license/MIT/blue" alt="license">
 </p>

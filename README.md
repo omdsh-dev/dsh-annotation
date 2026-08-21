@@ -8,6 +8,8 @@
 
 <p align="center">Selection-annotation plugin for DSH Web: select text → annotate → press Enter to send it along with your message; the model replies to each annotation by number.</p>
 
+<p align="center"><strong>🌐 <a href="https://omdsh-dev.github.io/dsh-annotation/">Live Product Site — Explore dsh-annotation in DSH</a></strong></p>
+
 <p align="center">
   <img src="https://badgen.net/badge/license/MIT/blue" alt="license">
 </p>
