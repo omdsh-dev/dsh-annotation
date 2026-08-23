@@ -800,8 +800,10 @@ window.__ModuleLoader__.load({
       // 延迟清 latch 与 InputBar 一致（略放宽到 50ms，兼容第三方输入法时序）。
       var imeComposing = false
       var imeClearTimer = null
+      var imeTouchedAt = 0
       function markImeComposing() {
         imeComposing = true
+        imeTouchedAt = Date.now()
         if (imeClearTimer !== null) {
           clearTimeout(imeClearTimer)
           imeClearTimer = null
@@ -816,7 +818,16 @@ window.__ModuleLoader__.load({
       }
       /** @param {KeyboardEvent} e */
       function isImeKeyBlocked(e) {
-        return imeComposing || e.isComposing === true || e.keyCode === 229
+        if (e.isComposing === true || e.keyCode === 229) {
+          imeTouchedAt = Date.now()
+          return true
+        }
+        // compositionend 偶尔会丢失。只在浏览器已明确报告「非合成」且 latch
+        // 1.2 秒没有活动时复位，避免一次异常把之后所有 Enter 永久锁死。
+        if (imeComposing && imeClearTimer === null && Date.now() - imeTouchedAt >= 1200) {
+          imeComposing = false
+        }
+        return imeComposing
       }
       document.addEventListener('compositionstart', markImeComposing, true)
       document.addEventListener('compositionend', markImeEnded, true)
@@ -1015,17 +1026,7 @@ window.__ModuleLoader__.load({
             if (attached && (e.ctrlKey || e.metaKey)) {
               e.preventDefault()
               e.stopPropagation()
-              var current = sessions.list.getSnapshot().current
-              if (current !== undefined) {
-                var scoped = sessions.scope(current)
-                if (scoped !== undefined) {
-                  try {
-                    ctx.conversation.input.for(scoped).submit('queue')
-                  } catch (err) {
-                    console.warn('[annotation] Cmd/Ctrl+Enter 直接提交失败：', err)
-                  }
-                }
-              }
+              submitAttached()
             }
           }
         }
@@ -1033,6 +1034,48 @@ window.__ModuleLoader__.load({
       // capture 阶段：必须先于 composer 自己的 Enter 处理（React 在容器层冒泡
       // 提交）——否则等我们执行时消息已提交，拼稿永远太迟。
       document.addEventListener('keydown', onKeyDown, true)
+
+      function submitAttached() {
+        var current = sessions.list.getSnapshot().current
+        if (current === undefined) return
+        var scoped = sessions.scope(current)
+        if (scoped === undefined) return
+        try {
+          ctx.conversation.input.for(scoped).submit('queue')
+        } catch (err) {
+          console.warn('[annotation] 批注直接提交失败：', err)
+        }
+      }
+
+      function sendButtonOf(target) {
+        if (!(target instanceof Element) || typeof target.closest !== 'function') return null
+        var button = target.closest('button')
+        if (!(button instanceof HTMLButtonElement)
+          || button.closest('[data-composer-card]') === null) return null
+        var label = button.getAttribute('aria-label')
+        return label === '发送消息' || label === 'Send message' ? button : null
+      }
+
+      // 鼠标/触控发送不经过 textarea 的 Enter 路径。pointerdown 能覆盖宿主因
+      // 空草稿而禁用的发送按钮；已有文字时只拼稿，后续 click 仍由宿主提交。
+      function onSendPointerDown(e) {
+        if (ui.quotes.length === 0 || e.button !== 0) return
+        var button = sendButtonOf(e.target)
+        if (button === null) return
+        var wasDisabled = button.disabled
+        if (!attachAndSend({ ctrlKey: false, metaKey: false }) || !wasDisabled) return
+        e.preventDefault()
+        e.stopPropagation()
+        submitAttached()
+      }
+
+      // 键盘/辅助技术激活按钮时没有 pointerdown，以 detail=0 的 click 补齐。
+      function onSendKeyboardClick(e) {
+        if (e.detail !== 0 || ui.quotes.length === 0 || sendButtonOf(e.target) === null) return
+        attachAndSend({ ctrlKey: false, metaKey: false })
+      }
+      document.addEventListener('pointerdown', onSendPointerDown, true)
+      document.addEventListener('click', onSendKeyboardClick, true)
 
       // ---------- 渲染 ----------
       function iconButton(cls, icon, title, onClick) {
@@ -1978,6 +2021,8 @@ window.__ModuleLoader__.load({
         document.removeEventListener('selectionchange', onSelection)
         document.removeEventListener('pointerdown', onDocPointerDown, true)
         document.removeEventListener('keydown', onKeyDown, true)
+        document.removeEventListener('pointerdown', onSendPointerDown, true)
+        document.removeEventListener('click', onSendKeyboardClick, true)
         document.removeEventListener('compositionstart', markImeComposing, true)
         document.removeEventListener('compositionend', markImeEnded, true)
         if (imeClearTimer !== null) { clearTimeout(imeClearTimer); imeClearTimer = null }

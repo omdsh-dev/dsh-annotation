@@ -35,3 +35,20 @@ test('attachAndSend 在 setDraft 之前拦截命令草稿', () => {
   assert.ok(splice !== -1, 'attachAndSend should call setDraft')
   assert.ok(guard < splice, 'command guard must run before setDraft splices the block')
 })
+
+test('发送按钮在 pointerdown 阶段先拼稿，空草稿按钮则由插件直接提交', () => {
+  const fn = source.match(/function onSendPointerDown\(e\) \{[\s\S]*?\n      \}/)
+  assert.ok(fn, 'client.js should define onSendPointerDown')
+  assert.match(fn[0], /sendButtonOf\(e\.target\)/)
+  assert.match(fn[0], /attachAndSend\(\{ ctrlKey: false, metaKey: false \}\)/)
+  assert.match(fn[0], /!wasDisabled\) return/)
+  assert.match(fn[0], /submitAttached\(\)/)
+})
+
+test('丢失 compositionend 的输入法锁会超时复位', () => {
+  const fn = source.match(/function isImeKeyBlocked\(e\) \{[\s\S]*?\n      \}/)
+  assert.ok(fn, 'client.js should define isImeKeyBlocked')
+  assert.match(fn[0], /imeClearTimer === null/)
+  assert.match(fn[0], /Date\.now\(\) - imeTouchedAt >= 1200/)
+  assert.match(fn[0], /imeComposing = false/)
+})
