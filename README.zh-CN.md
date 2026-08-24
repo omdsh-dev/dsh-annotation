@@ -55,7 +55,9 @@
 ## 安装（官方 bundle 路径 · 唯一）
 
 ```sh
-# GitHub 公开仓库安装（无需 npm 账号）
+# npm 公开包安装（无需 npm 账号）
+dsh plugin --profile web add @changfenhuang/dsh-annotation
+# 也可以直接从 GitHub 公开源码安装
 dsh plugin --profile web add git+https://github.com/omdsh-dev/dsh-annotation.git
 # 本地路径安装（开发调试）
 cd /path/to/dsh-annotation
@@ -71,7 +73,7 @@ dsh plugin --profile web add .
 
 ```sh
 dsh --profile web --dump-config | rg "id: dsh-annotation"   # 必须恰好 1 行
-curl -s -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:3080/plugins/@omdsh-dev/dsh-annotation/client.js"   # 200
+curl -s -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:3080/plugins/@changfenhuang/dsh-annotation/client.js"   # 200
 ```
 
 ## 重启 web 服务

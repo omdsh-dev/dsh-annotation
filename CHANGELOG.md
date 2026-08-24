@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+### 发布
+- npm 发布作用域改为个人账号 `@changfenhuang/dsh-annotation`；GitHub 仓库继续保留在 `omdsh-dev` 组织。同步更新运行时模块标识、资源路由和安装文档，不保留旧 npm 名称兼容层。
+
 ### 修复
 - **斜杠命令不再被批注拼稿降级（issue #20）**：有待发送批注时输入 `/goal` 等命令并回车，v1.4.1 会把批注块前置进草稿，破坏 DSH 输入机的命令 token 前缀（watchClaim 释放声明），命令被降级为普通消息发出、goal 无法启用。现在命令草稿原样放行、不拼批注，批注保留并随下一条普通消息附带，同时弹 toast 提示（zh/en）。
 ### 兼容性
