@@ -73,6 +73,17 @@ npm install @changfenhuang/dsh-annotation
 
 > `npm install` 只添加依赖，不会把插件注册到 DSH；在 DSH 中使用时仍应执行上面的 `dsh plugin add`。
 
+### 从旧 `@omdsh-dev` 包名迁移
+
+如果你在 v1.4.2 之前安装过插件，请先删除旧依赖，再安装改名后的包：
+
+```sh
+dsh plugin --profile web remove @omdsh-dev/dsh-annotation
+dsh plugin --profile web add @changfenhuang/dsh-annotation
+```
+
+如果 `dsh web` 仍然启动失败并提到 `@omdsh-dev/dsh-annotation`，请只删除 `~/.dsh/profiles/web/cordis.patch.yml` 中使用该旧名字的 `dsh-annotation` 登记。插件现在会自行提供 `@changfenhuang/dsh-annotation` 登记。
+
 | 做 | 不做 |
 |----|------|
 | 只 `dsh plugin add` / 只写 `bundles` | **不要**再在 profile/home `cordis.patch.yml` insert 同 id |

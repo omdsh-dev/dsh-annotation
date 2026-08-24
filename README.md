@@ -73,6 +73,17 @@ npm install @changfenhuang/dsh-annotation
 
 > `npm install` only adds the dependency; it does not register the plugin with DSH. Use `dsh plugin add` above when installing it into DSH.
 
+### Migrating from the old `@omdsh-dev` package name
+
+If you installed the plugin before v1.4.2, remove the old dependency before installing the renamed package:
+
+```sh
+dsh plugin --profile web remove @omdsh-dev/dsh-annotation
+dsh plugin --profile web add @changfenhuang/dsh-annotation
+```
+
+If `dsh web` still fails and mentions `@omdsh-dev/dsh-annotation`, remove only the stale `dsh-annotation` entry that uses that old name from `~/.dsh/profiles/web/cordis.patch.yml`. The plugin now supplies the `@changfenhuang/dsh-annotation` entry itself.
+
 | Do | Don't |
 |----|------|
 | Only `dsh plugin add` / only write `bundles` | **Never** insert the same id again in the profile/home `cordis.patch.yml` |
