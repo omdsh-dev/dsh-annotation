@@ -55,7 +55,9 @@ Select assistant text ──▶ Toolbar "Annotate" ──▶ Write note / save e
 ## Install (official bundle path · the only one)
 
 ```sh
-# Public GitHub install (works without an npm account)
+# Public npm package (works without an npm account)
+dsh plugin --profile web add @changfenhuang/dsh-annotation
+# Or install directly from the public GitHub source
 dsh plugin --profile web add git+https://github.com/omdsh-dev/dsh-annotation.git
 # local path install (development / debugging)
 cd /path/to/dsh-annotation
@@ -71,7 +73,7 @@ Self-check:
 
 ```sh
 dsh --profile web --dump-config | rg "id: dsh-annotation"   # must be exactly 1 line
-curl -s -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:3080/plugins/@omdsh-dev/dsh-annotation/client.js"   # 200
+curl -s -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:3080/plugins/@changfenhuang/dsh-annotation/client.js"   # 200
 ```
 
 ## Restarting the web service

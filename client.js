@@ -40,8 +40,8 @@
 // 同时覆盖两种视图结构（见 assistantRows / allMessageRows / assistantRowOf）。
 window.__ModuleLoader__.load({
   // 必须与 package.json "name" 完全一致，否则 client-modules 报：
-  // bundle loaded without registering "@omdsh-dev/dsh-annotation"
-  id: '@omdsh-dev/dsh-annotation',
+  // bundle loaded without registering "@changfenhuang/dsh-annotation"
+  id: '@changfenhuang/dsh-annotation',
   factory: (require) => {
     'use strict'
     var module = { exports: {} }
@@ -2041,7 +2041,7 @@ window.__ModuleLoader__.load({
       }
     }
 
-    exports.name = '@omdsh-dev/dsh-annotation'
+    exports.name = '@changfenhuang/dsh-annotation'
     exports.inject = ['sessions', 'conversation', 'locale']
     exports.apply = apply
 
