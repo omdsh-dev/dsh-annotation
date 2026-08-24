@@ -65,6 +65,14 @@ dsh plugin --profile web add .
 # restart the web service — see "Restarting the web service" below
 ```
 
+To add it only as a Node dependency in an existing project:
+
+```sh
+npm install @changfenhuang/dsh-annotation
+```
+
+> `npm install` only adds the dependency; it does not register the plugin with DSH. Use `dsh plugin add` above when installing it into DSH.
+
 | Do | Don't |
 |----|------|
 | Only `dsh plugin add` / only write `bundles` | **Never** insert the same id again in the profile/home `cordis.patch.yml` |

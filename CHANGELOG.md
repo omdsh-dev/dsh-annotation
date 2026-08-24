@@ -1,18 +1,22 @@
 # Changelog
 
 ## [Unreleased]
+
+## [1.4.2] - 2026-08-24
+### 文档
+- 在中英文 README 中补充原生 `npm install @changfenhuang/dsh-annotation` 命令，并明确它只添加 Node 依赖；安装并激活 DSH 插件仍使用 `dsh plugin add`。
+- 产品站安装命令同步改为 npm 公开包。
+
+## [1.4.1] - 2026-08-18
 ### 发布
 - npm 发布作用域改为个人账号 `@changfenhuang/dsh-annotation`；GitHub 仓库继续保留在 `omdsh-dev` 组织。同步更新运行时模块标识、资源路由和安装文档，不保留旧 npm 名称兼容层。
 
 ### 修复
 - **斜杠命令不再被批注拼稿降级（issue #20）**：有待发送批注时输入 `/goal` 等命令并回车，v1.4.1 会把批注块前置进草稿，破坏 DSH 输入机的命令 token 前缀（watchClaim 释放声明），命令被降级为普通消息发出、goal 无法启用。现在命令草稿原样放行、不拼批注，批注保留并随下一条普通消息附带，同时弹 toast 提示（zh/en）。
+- **恢复 Cmd/Ctrl+Enter 纯批注直接发送（issue #17）**：v1.3.18 为修 issue #10 把修饰键 Enter 全部排除，导致空草稿时 Cmd/Ctrl+Enter 无法直接发送纯批注。现仅在草稿为空时接管 Cmd/Ctrl+Enter，并在 capture 阶段主动 `submit('queue')`，避免 composer 的 accelerated 路径在「运行中 + 有排队消息」时误走 steerQueue 而把批注块留在输入框；草稿已有文字时仍交由 composer 处理，保留宿主的 Queue / Steer 策略。
 ### 兼容性
 - **dsh 0.1.0-rc.8**：确认浏览器模块加载、会话作用域、输入提交、语言切换及批注依赖的页面锚点均保持兼容；无需增加兼容层，`npm run check` 全通过。
 - **dsh 0.1.1-rc.2**：确认浏览器模块加载、会话作用域、输入提交、语言订阅及页面锚点契约仍保持兼容；无需增加兼容层，`npm run check` 3/3 通过，并在 rc.2 真实 Web 页面确认脚本加载与样式注入。
-
-## [1.4.1] - 2026-08-18
-### 修复
-- **恢复 Cmd/Ctrl+Enter 纯批注直接发送（issue #17）**：v1.3.18 为修 issue #10 把修饰键 Enter 全部排除，导致空草稿时 Cmd/Ctrl+Enter 无法直接发送纯批注。现仅在草稿为空时接管 Cmd/Ctrl+Enter，并在 capture 阶段主动 `submit('queue')`，避免 composer 的 accelerated 路径在「运行中 + 有排队消息」时误走 steerQueue 而把批注块留在输入框；草稿已有文字时仍交由 composer 处理，保留宿主的 Queue / Steer 策略。
 
 ## [1.4.0] - 2026-08-18
 ### 新功能

@@ -65,6 +65,14 @@ dsh plugin --profile web add .
 # 重启 web —— 见下方「重启 web 服务」
 ```
 
+如果只想把它作为 Node 依赖加入现有项目：
+
+```sh
+npm install @changfenhuang/dsh-annotation
+```
+
+> `npm install` 只添加依赖，不会把插件注册到 DSH；在 DSH 中使用时仍应执行上面的 `dsh plugin add`。
+
 | 做 | 不做 |
 |----|------|
 | 只 `dsh plugin add` / 只写 `bundles` | **不要**再在 profile/home `cordis.patch.yml` insert 同 id |
