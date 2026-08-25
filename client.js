@@ -765,6 +765,53 @@ window.__ModuleLoader__.load({
       },
     }
 
+    var PENDING_STORAGE_PREFIX = 'dsh.annotation.pending.v1.'
+
+    function pendingStorageKey(sessionId) {
+      return PENDING_STORAGE_PREFIX + encodeURIComponent(String(sessionId))
+    }
+
+    function parsePendingQuotes(raw) {
+      if (typeof raw !== 'string' || raw === '') return []
+      try {
+        var value = JSON.parse(raw)
+        if (!Array.isArray(value)) return []
+        return value.filter(function (q) {
+          return q !== null && typeof q === 'object'
+            && typeof q.id === 'string' && typeof q.text === 'string' && q.text !== ''
+        }).map(function (q) {
+          return {
+            id: q.id,
+            text: q.text,
+            note: typeof q.note === 'string' ? q.note : '',
+            range: null,
+            seqKey: typeof q.seqKey === 'string' ? q.seqKey : '',
+            rowHead: typeof q.rowHead === 'string' ? q.rowHead : '',
+            textOffset: Number.isFinite(q.textOffset) ? q.textOffset : -1,
+            ctxBefore: typeof q.ctxBefore === 'string' ? q.ctxBefore : '',
+            ctxAfter: typeof q.ctxAfter === 'string' ? q.ctxAfter : '',
+          }
+        })
+      } catch (_) {
+        return []
+      }
+    }
+
+    function stringifyPendingQuotes(quotes) {
+      return JSON.stringify(quotes.map(function (q) {
+        return {
+          id: q.id,
+          text: q.text,
+          note: q.note || '',
+          seqKey: q.seqKey || '',
+          rowHead: q.rowHead || '',
+          textOffset: Number.isFinite(q.textOffset) ? q.textOffset : -1,
+          ctxBefore: q.ctxBefore || '',
+          ctxAfter: q.ctxAfter || '',
+        }
+      }))
+    }
+
     // ============================== 插件主体 ==============================
     function apply(ctx) {
       var sessions = ctx.sessions
@@ -788,6 +835,31 @@ window.__ModuleLoader__.load({
         lastKey: '',
         pendingAnchor: null,
         el: null,
+      }
+
+      function readPendingQuotes(sessionId) {
+        if (sessionId === undefined) return []
+        try {
+          return parsePendingQuotes(localStorage.getItem(pendingStorageKey(sessionId)))
+        } catch (err) {
+          console.warn('[annotation] 读取待发送批注失败：', err)
+          return []
+        }
+      }
+
+      function writePendingQuotes(sessionId) {
+        if (sessionId === undefined) return
+        try {
+          var key = pendingStorageKey(sessionId)
+          if (ui.quotes.length === 0) localStorage.removeItem(key)
+          else localStorage.setItem(key, stringifyPendingQuotes(ui.quotes))
+        } catch (err) {
+          console.warn('[annotation] 保存待发送批注失败：', err)
+        }
+      }
+
+      function writeCurrentPendingQuotes() {
+        writePendingQuotes(sessions.list.getSnapshot().current)
       }
 
       var ignoreUntil = 0
@@ -1394,7 +1466,10 @@ window.__ModuleLoader__.load({
             return false
           }
           // 草稿已含批注块（上次追加未发送）→ 不重复追加（zh/en 双哨兵）。
-          if (hasAnnotationBlock(draft)) return true
+          if (hasAnnotationBlock(draft)) {
+            annotationAttached = true
+            return true
+          }
           var block = buildBlock()
           shell.setDraft(block + '\n' + draft)
           annotationAttached = true
@@ -1435,6 +1510,7 @@ window.__ModuleLoader__.load({
               ui.pendingAnchor = null
               ui.noteDraft = ''
               ui.error = null
+              writeCurrentPendingQuotes()
               closeToolbar()
               updateChip()
               renderMarkers()
@@ -1458,6 +1534,7 @@ window.__ModuleLoader__.load({
             ctxAfter: a.ctxAfter,
           })
         }
+        writeCurrentPendingQuotes()
         ui.pendingAnchor = null
         ui.noteDraft = ''
         ui.error = null
@@ -1469,6 +1546,7 @@ window.__ModuleLoader__.load({
 
       function removeQuote(id) {
         ui.quotes = ui.quotes.filter(function (q) { return q.id !== id })
+        writeCurrentPendingQuotes()
         updateChip()
         render()
         renderMarkers()
@@ -1616,6 +1694,7 @@ window.__ModuleLoader__.load({
               })
               ui.quotes = []
               annotationAttached = false
+              writeCurrentPendingQuotes()
               tipLayer.textContent = ''
               updateChip()
               renderMarkers()
@@ -1947,6 +2026,7 @@ window.__ModuleLoader__.load({
             // 可能打断输入法合成（中文上不了屏）。
             if (ui.quotes.length > 0) {
               ui.quotes = []
+              writeCurrentPendingQuotes()
               updateChip()
               renderMarkers()
             }
@@ -1995,14 +2075,16 @@ window.__ModuleLoader__.load({
         try { localeUnsub = ctx.locale.subscribe(applyLocale) } catch (_) { localeUnsub = null }
       }
 
-      // ---------- 会话切换时收起浮窗并清空批注 ----------
+      // ---------- 待发送批注按会话恢复 ----------
       var lastSessionId = sessions.list.getSnapshot().current
+      ui.quotes = readPendingQuotes(lastSessionId)
       var unsub = sessions.list.subscribe(function () {
         var cur = sessions.list.getSnapshot().current
         if (cur === lastSessionId) return
+        writePendingQuotes(lastSessionId)
         lastSessionId = cur
         if (ui.mode !== 'closed') closeToolbar()
-        ui.quotes = []
+        ui.quotes = readPendingQuotes(cur)
         annotationAttached = false
         ui.noteDraft = ''
         tipLayer.textContent = ''
