@@ -1,6 +1,9 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.3] - 2026-08-26
+### 修复
+- **未发送批注不再跨会话/页面切换丢失（issue #28）**：待发送批注原先只存于内存，切换会话或刷新页面后静默丢失。现按会话 ID 持久化到 localStorage（`dsh.annotation.pending.v1.<sessionId>`，Range 不可序列化故剥离、锚点元数据保留）；切换会话先写旧会话再读新会话，刷新后进入会话即恢复，恢复时按 seqKey/行首/上下文模糊搜索重新锚定并重绘脚注与高亮；发送成功或手动删除后才清空；损坏数据自动忽略并回退为空列表。回归测试见 `test/pending-storage.test.mjs`。
+
 ### 性能
 - **流式期间不再逐 mutation 批次全文档扫描（issue #31）**：decorateAll 原先在 body 全树 MutationObserver（childList: subtree: characterData: attributes:）的每个相关批次上同步执行——流式输出期的主体批次是 attributes/characterData（实测 20s 内 245 批次、0 个 childList），每次都是 querySelectorAll('[data-chat-flow-kind]') + 每行子树查询 + textContent，成本随会话长度线性增长。现在只有含 childList（消息行插入）的批次才同步执行完整装饰（保证「隐藏批注块」先于绘制，无闪烁回归）；流式批次改为 500ms 限流的助手芯片增量扫描（行内 data-streaming 守卫不变，芯片替换时序不变）；1s 兜底轮询保留。实测 20s 流式窗口 CPU 采样中 querySelectorAll 命中从 ~100 降至 17，decorateAll 不再出现在热路径；长会话（500+ 行）预期每帧节省 1-4ms 主线程。
 
