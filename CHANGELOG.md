@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+### 性能
+- **流式期间不再逐 mutation 批次全文档扫描（issue #31）**：decorateAll 原先在 body 全树 MutationObserver（childList: subtree: characterData: attributes:）的每个相关批次上同步执行——流式输出期的主体批次是 attributes/characterData（实测 20s 内 245 批次、0 个 childList），每次都是 querySelectorAll('[data-chat-flow-kind]') + 每行子树查询 + textContent，成本随会话长度线性增长。现在只有含 childList（消息行插入）的批次才同步执行完整装饰（保证「隐藏批注块」先于绘制，无闪烁回归）；流式批次改为 500ms 限流的助手芯片增量扫描（行内 data-streaming 守卫不变，芯片替换时序不变）；1s 兜底轮询保留。实测 20s 流式窗口 CPU 采样中 querySelectorAll 命中从 ~100 降至 17，decorateAll 不再出现在热路径；长会话（500+ 行）预期每帧节省 1-4ms 主线程。
 
 ## [1.4.2] - 2026-08-24
 ### 文档

@@ -1066,10 +1066,25 @@ window.__ModuleLoader__.load({
       var observer = new MutationObserver(function (mutations) {
         if (!mutationRelevant(mutations)) return
         onLayoutChange()
-        // 消息行插入/内容填充的瞬间同步执行气泡装饰（隐藏批注块 + 贴标签）：
+        // 只有「消息行插入」批次才同步执行气泡装饰（隐藏批注块 + 贴标签）：
         // MutationObserver 回调在微任务阶段运行，早于浏览器绘制，
         // 用户看不到「先显示批注块再隐藏」的闪烁。
-        decorateAll()
+        // 流式输出期的主体 mutation 是 attributes/characterData（每个 token 帧一层
+        // class/style/文本变更，实测 20s 内 245 批次 0 个 childList）：行插入本来
+        // 就携带完整批注块，逐一触发全文档扫描（decorateAll 是 querySelectorAll +
+        // 每行子树查询 + textContent，成本随会话长度线性增长）会在长会话上白白
+        // 烧主线程；漏网场景由下方 1s 兜底轮询覆盖。
+        var hasRowInsert = false
+        for (var i = 0; i < mutations.length; i++) {
+          if (mutations[i].type === 'childList') { hasRowInsert = true; break }
+        }
+        if (hasRowInsert) {
+          decorateAll()
+          return
+        }
+        // 流式批次: 只做助手回复芯片的限流装饰(行内 data-streaming 守卫已保证
+        // 流式中不做替换, 结束后的首拍芯片滞后 ≤500ms), 不再逐批全文档扫描。
+        scheduleAssistantDecorate()
       })
       observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true })
 
@@ -1885,6 +1900,25 @@ window.__ModuleLoader__.load({
       }
 
       /** 扫描所有已结束流式输出的助手行：把「Annotation N：」替换为可悬浮芯片。 */
+      /** 流式 mutation 批次的芯片装饰限流: 前导 + 500ms 拖尾, 每批次最多触发一次
+       *  增量扫描(只扫助手行), 代替逐批全文档 decorateAll。 */
+      var lastAssistantDecorate = 0
+      var assistantDecorateTimer = null
+      function scheduleAssistantDecorate() {
+        var now = performance.now()
+        if (now - lastAssistantDecorate >= 500) {
+          lastAssistantDecorate = now
+          decorateAssistantAnnotations()
+          return
+        }
+        if (assistantDecorateTimer !== null) return
+        assistantDecorateTimer = setTimeout(function () {
+          assistantDecorateTimer = null
+          lastAssistantDecorate = performance.now()
+          decorateAssistantAnnotations()
+        }, 500 - (now - lastAssistantDecorate))
+      }
+
       function decorateAssistantAnnotations() {
         var rows = assistantRows()
         for (var i = 0; i < rows.length; i++) {
