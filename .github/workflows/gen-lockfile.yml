@@ -1,0 +1,50 @@
+name: Generate lockfile
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      # actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      # pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
+        with:
+          version: 11.7.0
+
+      # Resolve and persist the lockfile WITHOUT installing (no frozen mode).
+      - name: Regenerate pnpm-lock.yaml
+        run: pnpm install --lockfile-only
+
+      - name: Commit lockfile if changed
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [[ -n "$(git status --porcelain pnpm-lock.yaml)" ]]; then
+            git add pnpm-lock.yaml
+            git commit -m "chore: regenerate pnpm-lock.yaml via CI"
+            git push
+            echo "committed=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "No lockfile changes to commit."
+          fi
+
+      - name: Show importers sanity check
+        shell: bash
+        run: |
+          sed -n '/^importers:/,/^packages:/p' pnpm-lock.yaml | head -30
