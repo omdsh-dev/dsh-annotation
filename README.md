@@ -92,8 +92,10 @@ Self-check:
 
 ```sh
 dsh --profile web --dump-config | rg "id: dsh-annotation"   # must be exactly 1 line
-curl -s -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:3080/plugins/@changfenhuang/dsh-annotation/client.js"   # 200
+dsh web --no-open   # open the printed one-time token URL in a browser
 ```
+
+In the browser console, `window.__DSH_BOOT__.entries.find(({ id }) => id === '@changfenhuang/dsh-annotation')` must return an entry with a `url`. dsh 0.1.2 no longer exposes the old bare per-plugin URL.
 
 ## Restarting the web service
 
