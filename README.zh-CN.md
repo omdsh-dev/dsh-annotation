@@ -92,8 +92,10 @@ dsh plugin --profile web add @changfenhuang/dsh-annotation
 
 ```sh
 dsh --profile web --dump-config | rg "id: dsh-annotation"   # 必须恰好 1 行
-curl -s -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:3080/plugins/@changfenhuang/dsh-annotation/client.js"   # 200
+dsh web --no-open   # 复制输出的一次性令牌地址并在浏览器打开
 ```
+
+在浏览器控制台执行 `window.__DSH_BOOT__.entries.find(({ id }) => id === '@changfenhuang/dsh-annotation')`，必须返回带 `url` 的登记；dsh 0.1.2 起不再开放旧版单插件裸地址。
 
 ## 重启 web 服务
 
