@@ -28,8 +28,9 @@
 //   zh 分隔标记用「提问：」而非「问题：」——标题行「回答我的问题：」里也含
 //   它，气泡隐藏手术会误命中）
 //
-// 不依赖发送完成事件链：watchInputDraft 在初始化时会话未加载时会失效，仅作
-// 暂存入口；气泡装饰走 MutationObserver + 轮询。
+// 发送清空只认 watchInputDraft 的「草稿有→空」迁移（未就绪时订阅重试补齐）；
+// 气泡装饰走 MutationObserver + 轮询，只负责隐藏/贴标签，绝不清空待发送批注
+// （历史消息重装饰与刚发送在 DOM 上不可区分，见 decorateAll）。
 //
 // 判别式与 omdsh-dev/navbar 一致：助手行 = [data-time-hover-root] 且不含
 // user bubble（[class*="bubble"]）。
@@ -1687,14 +1688,13 @@ window.__ModuleLoader__.load({
       // 仅当批注块真正拼入过草稿（用户按过回车）才在草稿清空时清除批注，
       // 避免普通草稿编辑（打字后删字）误触发「已发送」判定而清空批注集。
       var annotationAttached = false
-      function watchInputDraft() {
-        if (typeof inputUnsub === 'function') { inputUnsub(); inputUnsub = null }
-        var id = sessions.list.getSnapshot().current
-        if (id === undefined) return
+      var inputWatchTimer = null
+      function tryWatchInputDraft(id) {
         try {
           var sc = sessions.scope(id)
-          if (sc === undefined) return
+          if (sc === undefined) return false
           var sh = ctx.conversation.input.for(sc)
+          if (sh === undefined || sh === null || typeof sh.state.subscribe !== 'function') return false
           var hadDraft = false
           inputUnsub = sh.state.subscribe(function () {
             var d = (sh.state.getSnapshot().draft || '').trim()
@@ -1717,7 +1717,25 @@ window.__ModuleLoader__.load({
               kickDecorate()
             }
           })
-        } catch (_) { inputUnsub = null }
+          return true
+        } catch (_) { inputUnsub = null; return false }
+      }
+      // 发送清空只认这里的「草稿有→空」迁移（装饰扫描不再兜底，见 decorateAll）。
+      // 插件可能先于会话加载完成：current 未定、scope/input 尚不可用时订阅会失败，
+      // 必须每秒重试直到挂上，否则一次发送的清空被漏掉，已发送的批注会永远留在
+      // 待发送集里，之后每次 Enter 都重新拼进草稿。
+      function watchInputDraft() {
+        if (inputWatchTimer !== null) { clearInterval(inputWatchTimer); inputWatchTimer = null }
+        if (typeof inputUnsub === 'function') { inputUnsub(); inputUnsub = null }
+        var id = sessions.list.getSnapshot().current
+        if (id !== undefined && tryWatchInputDraft(id)) return
+        inputWatchTimer = setInterval(function () {
+          var cur = sessions.list.getSnapshot().current
+          if (cur !== undefined && tryWatchInputDraft(cur)) {
+            clearInterval(inputWatchTimer)
+            inputWatchTimer = null
+          }
+        }, 1000)
       }
 
       /** 把批注块文本从用户消息气泡里藏掉（模型消息内容不受影响）：
@@ -2050,20 +2068,16 @@ window.__ModuleLoader__.load({
             if (b === null || !hasAnnotationBlock(b.textContent || '')) continue
             // 最新一条优先消费发送时暂存的数据；其余从气泡文本反解析（须在隐藏前）。
             var items = null
-            if (i === rows.length - 1 && pendingDeco.length > 0) items = pendingDeco.pop().items
-            if (items === null || items.length === 0) items = parseItemsFromBubble(el)
-            if (!hideAnnotationBlock(el)) continue // 内容未渲染完 → 留给下轮
+            var fromSend = false
+            if (i === rows.length - 1 && pendingDeco.length > 0) { items = pendingDeco[0].items; fromSend = true }
+            if (items === null || items.length === 0) { items = parseItemsFromBubble(el); fromSend = false }
+            if (!hideAnnotationBlock(el)) continue // 内容未渲染完 → 留给下轮（发送暂存数据不弹出）
+            if (fromSend) pendingDeco.shift()
             attachBubbleTag(el, items)
-            // 批注已随消息真实发出（用户气泡带着批注块出现）→ 清空待发送批注集。
-            // 兜底 watchInputDraft 在初始化时会话未加载时失效的场景：若不清空，
-            // 之后每次在 composer 按 Enter 都会把批注块重新注入草稿，且 setDraft
-            // 可能打断输入法合成（中文上不了屏）。
-            if (ui.quotes.length > 0) {
-              ui.quotes = []
-              writeCurrentPendingQuotes()
-              updateChip()
-              renderMarkers()
-            }
+            // 这里绝不清空待发送批注：DOM 层面无法区分「刚发送的消息」与「会话
+            // 切换/刷新后重新渲染的历史消息」，历史消息重装饰曾被误判为已发送而
+            // 清空刚恢复的待发送批注（issue #28 复测）。发送清空的唯一权威是
+            // watchInputDraft 的「草稿有→空」迁移，其初始化时序洞由订阅重试补齐。
           }
           // 助手回复：把「Annotation N：」变为可悬浮的批注芯片（内容取自最近一条带批注的用户消息）。
           decorateAssistantAnnotations()
@@ -2120,6 +2134,9 @@ window.__ModuleLoader__.load({
         if (ui.mode !== 'closed') closeToolbar()
         ui.quotes = readPendingQuotes(cur)
         annotationAttached = false
+        // 旧会话未消费的发送暂存作废：留着会被新会话的历史消息误消费（错贴标签）；
+        // 旧会话那条消息回切后会由气泡反解析路径重新装饰。
+        pendingDeco.length = 0
         ui.noteDraft = ''
         tipLayer.textContent = ''
         updateChip()
@@ -2147,6 +2164,7 @@ window.__ModuleLoader__.load({
         host.removeEventListener('pointerdown', onHostPointerDown)
         observer.disconnect()
         if (typeof unsub === 'function') unsub()
+        if (inputWatchTimer !== null) { clearInterval(inputWatchTimer); inputWatchTimer = null }
         if (typeof inputUnsub === 'function') inputUnsub()
         if (typeof localeUnsub === 'function') localeUnsub()
         if (decoTimer !== null) { clearInterval(decoTimer); decoTimer = null }
