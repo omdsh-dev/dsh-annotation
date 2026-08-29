@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - node: 22
+            host-ref: dsh-v0.1.1-rc.2
+          - node: 24
+            host-ref: dsh-v0.1.2-alpha.1
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: ${{ matrix.node }}
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
+        with:
+          version: 11.7.0
+
+      - name: Clone pinned DSH host
+        run: |
+          DSH_ROOT="$GITHUB_WORKSPACE/../../.dsh/source/current"
+          mkdir -p "$(dirname "$DSH_ROOT")"
+          git clone --depth 1 --branch "${{ matrix.host-ref }}" https://github.com/deepseek-ai/deepseek-harness.git "$DSH_ROOT"
+
+      - name: Install and build DSH host
+        working-directory: ${{ github.workspace }}/../../.dsh/source/current
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build
+
+      - name: Install plugin dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check
+        run: pnpm run check
+
+      - name: Smoke real DSH Web
+        run: node scripts/e2e.mjs --install link --port 3190
+        env:
+          DSH_ROOT: ${{ github.workspace }}/../../.dsh/source/current
+          DSH_BIN: ${{ github.workspace }}/../../.dsh/source/current/apps/cli/lib/bin.js
