@@ -15,10 +15,11 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     env:
       RELEASE_TAG: ${{ github.event.release.tag_name }}
       PRERELEASE: ${{ github.event.release.prerelease }}
+      HOST_REF: ${{ github.event.release.prerelease && 'dsh-v0.1.2-alpha.1' || 'dsh-v0.1.1-rc.2' }}
 
     steps:
       # actions/checkout@v4
@@ -52,6 +53,12 @@ jobs:
             exit 1
           fi
 
+          VERSION_PRERELEASE="$(node -e 'console.log(process.argv[1].split("+")[0].includes("-") ? "true" : "false")' "$VERSION")"
+          if [ "$PRERELEASE" != "$VERSION_PRERELEASE" ]; then
+            echo "::error::package version prerelease state ($VERSION_PRERELEASE) does not match GitHub release prerelease state ($PRERELEASE)"
+            exit 1
+          fi
+
           if [ "$PRERELEASE" = "true" ]; then
             echo "npm_tag=next" >> "$GITHUB_OUTPUT"
           else
@@ -79,11 +86,31 @@ jobs:
             fi
           fi
 
-      - name: Install dependencies
+      - name: Clone selected DSH host
+        shell: bash
+        run: |
+          DSH_ROOT="$GITHUB_WORKSPACE/../../.dsh/source/current"
+          mkdir -p "$(dirname "$DSH_ROOT")"
+          git clone --depth 1 --branch "$HOST_REF" https://github.com/deepseek-ai/deepseek-harness.git "$DSH_ROOT"
+          echo "DSH_ROOT=$DSH_ROOT" >> "$GITHUB_ENV"
+
+      - name: Install and build DSH host
+        working-directory: ${{ github.workspace }}/../../.dsh/source/current
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build
+
+      - name: Install plugin dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Check
         run: pnpm run check
+
+      - name: Smoke selected release channel
+        run: node scripts/e2e.mjs --install link --port 3190
+        env:
+          DSH_ROOT: ${{ github.workspace }}/../../.dsh/source/current
+          DSH_BIN: ${{ github.workspace }}/../../.dsh/source/current/apps/cli/lib/bin.js
 
       - name: Publish to npm
         run: npm publish --access public --tag "${{ steps.release.outputs.npm_tag }}"
