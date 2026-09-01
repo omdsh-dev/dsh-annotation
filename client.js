@@ -1108,8 +1108,8 @@ window.__ModuleLoader__.load({
         // 纯批注能直接发出，同时不会把批注块明文留在输入框。
         if (e.key === 'Enter' && !e.shiftKey && !e.altKey
           && ui.quotes.length > 0 && !isImeKeyBlocked(e)) {
-          var ta = e.target
-          if (ta instanceof HTMLTextAreaElement && ta.closest && ta.closest('[data-composer-card]') !== null) {
+          var input = e.target instanceof Element && e.target.closest('[data-composer-input]')
+          if (input !== null && input.closest('[data-composer-card]') !== null) {
             var attached = attachAndSend(e)
             if (attached && (e.ctrlKey || e.metaKey)) {
               e.preventDefault()
