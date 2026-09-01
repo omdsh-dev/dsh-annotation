@@ -36,6 +36,13 @@ test('attachAndSend 在 setDraft 之前拦截命令草稿', () => {
   assert.ok(guard < splice, 'command guard must run before setDraft splices the block')
 })
 
+test('新版可编辑输入区按 Enter 会进入批注拼稿（issue #41）', () => {
+  const fn = source.match(/function onKeyDown\(e\) \{[\s\S]*?\n      \}/)
+  assert.ok(fn, 'client.js should define onKeyDown')
+  assert.match(fn[0], /closest\('\[data-composer-input\]'\)/)
+  assert.doesNotMatch(fn[0], /HTMLTextAreaElement/)
+})
+
 test('发送按钮在 pointerdown 阶段先拼稿，空草稿按钮则由插件直接提交', () => {
   const fn = source.match(/function onSendPointerDown\(e\) \{[\s\S]*?\n      \}/)
   assert.ok(fn, 'client.js should define onSendPointerDown')
