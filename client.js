@@ -152,6 +152,7 @@ window.__ModuleLoader__.load({
         '  box-shadow: 0 1px 4px rgba(0,0,0,.35); pointer-events: auto; cursor: pointer;',
         '  transition: filter .12s ease; }',
         '.dsh-ann-num:hover { filter: brightness(1.15); }',
+        'body:has([role="dialog"][aria-modal="true"]) [data-annotation-overlay] { display: none; }',
         '.dsh-ann-tip { animation: dsh-ann-pop .12s var(--ds-ease-in-out, ease); }',
         '@keyframes dsh-ann-fadein { from { opacity: 0; } to { opacity: 1; } }',
       ].join('\n')
@@ -1016,6 +1017,7 @@ window.__ModuleLoader__.load({
         requestAnimationFrame(function () {
           anchorRaf = false
           if (ui.quotes.length > 0) renderMarkers()
+          updateChip()
           if (ui.mode !== 'actions' || ui.quote === '') return
           var rect = null
           var sel = window.getSelection()
@@ -1057,7 +1059,8 @@ window.__ModuleLoader__.load({
           var el = t instanceof Element ? t : (t && t.parentElement)
           if (el === null || !el.closest) return true
           if (el.closest('[data-composer-card]') || el.closest('[data-input-scroll]')
-            || el.closest('[data-annotation-for-dsh]') || el.closest('[data-annotation-overlay]')) {
+            || el.closest('[data-annotation-for-dsh]') || el.closest('[data-annotation-overlay]')
+            || el.closest('[data-annotation-chip]') || el.closest('[data-annotation-tip-layer]')) {
             continue
           }
           return true
@@ -1589,6 +1592,10 @@ window.__ModuleLoader__.load({
       var tipLayer = document.createElement('div')
       tipLayer.setAttribute('data-annotation-tip-layer', '')
       document.body.appendChild(tipLayer)
+      var observedComposer = null
+      var composerObserver = typeof ResizeObserver === 'function'
+        ? new ResizeObserver(onLayoutChange)
+        : null
 
       function updateChip() {
         if (ui.quotes.length === 0) {
@@ -1603,8 +1610,18 @@ window.__ModuleLoader__.load({
         chipLayer.appendChild(b)
         chipLayer.appendChild(document.createTextNode(t('chip.count')))
         var card = document.querySelector('[data-composer-card]')
+        if (card !== observedComposer) {
+          if (composerObserver !== null) composerObserver.disconnect()
+          observedComposer = card
+          if (composerObserver !== null && card !== null) composerObserver.observe(card)
+        }
         if (card === null) { chipLayer.style.display = 'none'; return }
         var r = card.getBoundingClientRect()
+        if (r.width === 0 || r.height === 0 || r.right <= 0 || r.bottom <= 0
+          || r.left >= window.innerWidth || r.top >= window.innerHeight) {
+          chipLayer.style.display = 'none'
+          return
+        }
         var w = chipLayer.offsetWidth || 80
         chipLayer.style.left = Math.max(8, r.right - w - 12) + 'px'
         chipLayer.style.top = Math.max(8, r.top - 30) + 'px'
@@ -2168,6 +2185,7 @@ window.__ModuleLoader__.load({
         if (typeof inputUnsub === 'function') inputUnsub()
         if (typeof localeUnsub === 'function') localeUnsub()
         if (decoTimer !== null) { clearInterval(decoTimer); decoTimer = null }
+        if (composerObserver !== null) composerObserver.disconnect()
         chipLayer.remove()
         tipLayer.remove()
         host.remove()
