@@ -1,6 +1,11 @@
 # Changelog
 
 ## [Unreleased]
+
+## [1.4.6] - 2026-09-04
+### 修复
+- **新版输入区可随 Enter 发送批注（issue #41）**：适配 DSH 0.1.2-alpha.1 的 `div[data-composer-input]` 可编辑输入区，不再因旧 `textarea` 类型守卫跳过批注拼稿；继续保留输入卡片范围、输入法合成、斜杠命令及发送按钮策略。
+
 ### 发布
 - **正式版与测试版分流**：版本带预发布后缀时必须勾选 GitHub Pre-release，并只进入 npm `next`；无后缀版本只能作为正式 Release 进入 `latest`。新增 `dsh-v0.1.1-rc.2` / `dsh-v0.1.2-alpha.1` 双宿主真实 Web 验收，发布前确认插件资源可访问、页面完成挂载且没有页面异常。
 
