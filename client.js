@@ -722,8 +722,18 @@ window.__ModuleLoader__.load({
       var w = 400
       var left = rect.left + rect.width / 2 - w / 2
       left = Math.max(8, Math.min(left, window.innerWidth - w - 8))
-      var top = rect.top - height - 8
-      if (top < 8) top = Math.min(rect.bottom + 8, window.innerHeight - height - 8)
+      // 下方优先：原生选中菜单（移动端长按菜单、桌面 Copy/Search 浮层）锚定在选区
+      // 上沿附近，且原生 UI 恒绘制在页面内容之上（z-index 无效），工具条放上方必被
+      // 遮挡；因此下方放得下就放下方，放不下才回上方。
+      var belowTop = rect.bottom + 8
+      var belowFits = belowTop + height <= window.innerHeight - 8
+      var top
+      if (belowFits) {
+        top = belowTop
+      } else {
+        top = rect.top - height - 8
+        if (top < 8) top = Math.min(rect.bottom + 8, window.innerHeight - height - 8)
+      }
       return { left: Math.round(left), top: Math.round(Math.max(8, top)) }
     }
 
