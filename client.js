@@ -1507,12 +1507,16 @@ window.__ModuleLoader__.load({
       // 会强制滚动页面（视觉上"卡一下"）；延迟一帧让卡片关闭动画先完成，
       // 焦点回归更平滑。
       function focusComposer() {
-        var ta = document.querySelector('[data-composer-card] textarea')
-        if (!(ta instanceof HTMLTextAreaElement) || ta.disabled) return
+        var input = document.querySelector('[data-composer-card] [data-composer-input]')
+        if (!(input instanceof HTMLElement) || !input.isContentEditable) return
         requestAnimationFrame(function () {
-          if (!ta.isConnected) return
-          ta.focus({ preventScroll: true })
-          ta.setSelectionRange(ta.value.length, ta.value.length)
+          if (!input.isConnected) return
+          input.focus({ preventScroll: true })
+          var selection = window.getSelection()
+          if (selection !== null) {
+            selection.selectAllChildren(input)
+            selection.collapseToEnd()
+          }
         })
       }
 

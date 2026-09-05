@@ -43,6 +43,32 @@ test('新版可编辑输入区按 Enter 会进入批注拼稿（issue #41）', (
   assert.doesNotMatch(fn[0], /HTMLTextAreaElement/)
 })
 
+test('保存批注后聚焦新版输入区，并把光标放在草稿末尾', () => {
+  const fn = source.match(/function focusComposer\(\) \{[\s\S]*?\n      \}/)
+  assert.ok(fn, 'client.js should define focusComposer')
+  const calls = []
+  class HTMLElement {}
+  const input = Object.assign(new HTMLElement(), {
+    isContentEditable: true, isConnected: true,
+    focus: options => calls.push(['focus', options]),
+  })
+  const selection = {
+    selectAllChildren: element => calls.push(['select', element]),
+    collapseToEnd: () => calls.push(['end']),
+  }
+  const focusComposer = Function('document', 'window', 'HTMLElement', 'HTMLTextAreaElement', 'requestAnimationFrame',
+    `return (${fn[0]})`)(
+    { querySelector: selector => selector === '[data-composer-card] [data-composer-input]' ? input : null },
+    { getSelection: () => selection }, HTMLElement, class HTMLTextAreaElement {}, callback => callback(),
+  )
+  focusComposer()
+  assert.deepEqual(calls, [['focus', { preventScroll: true }], ['select', input], ['end']])
+  calls.length = 0
+  input.isConnected = false
+  focusComposer()
+  assert.deepEqual(calls, [])
+})
+
 test('发送按钮在 pointerdown 阶段先拼稿，空草稿按钮则由插件直接提交', () => {
   const fn = source.match(/function onSendPointerDown\(e\) \{[\s\S]*?\n      \}/)
   assert.ok(fn, 'client.js should define onSendPointerDown')
