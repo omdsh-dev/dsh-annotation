@@ -1,6 +1,6 @@
 {
   "name": "@changfenhuang/dsh-annotation",
-  "version": "1.4.8",
+  "version": "1.4.9-preview.1",
   "type": "module",
   "description": "DSH Web selection-annotation plugin: select assistant text, annotate (optional), and press Enter to send the annotation block with your message — the model replies to each annotation by number, with hoverable chips in the reply.",
   "main": "lib/index.js",
