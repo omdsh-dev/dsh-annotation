@@ -8,7 +8,7 @@ import { createServer } from 'node:http'
 
 const HTML = `<!doctype html><html><body>
   <div id="flow"></div>
-  <div data-composer-card id="composer"><textarea id="ta"></textarea></div>
+  <div data-composer-card id="composer"><div id="ta" data-composer-input contenteditable="true"></div></div>
   <script>
     window.__shells = {}
     function makeShell() {

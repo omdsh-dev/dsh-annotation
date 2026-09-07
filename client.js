@@ -94,7 +94,7 @@ window.__ModuleLoader__.load({
         '  font-family: var(--dsw-font-family, system-ui);',
         '  animation: dsh-ann-pop .12s var(--ds-ease-in-out, ease); }',
         '.dsh-ann-card-head { display: flex; align-items: center; justify-content: space-between;',
-        '  margin-bottom: 8px; }',
+        '  margin-bottom: 8px; cursor: move; touch-action: none; user-select: none; }',
         '.dsh-ann-card-title { font-size: 13px; font-weight: 600;',
         '  color: var(--dsw-alias-label-primary); }',
         '.dsh-ann-quote { font-size: 12px; line-height: 1.55;',
@@ -833,6 +833,7 @@ window.__ModuleLoader__.load({
       document.body.appendChild(host)
       var overlay = document.createElement('div')
       overlay.setAttribute('data-annotation-overlay', '')
+      overlay.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:900;'
       document.body.appendChild(overlay)
 
       var ui = {
@@ -1028,6 +1029,7 @@ window.__ModuleLoader__.load({
           anchorRaf = false
           if (ui.quotes.length > 0) renderMarkers()
           updateChip()
+          if (ui.mode === 'editing' && ui.el !== null) positionEditor(ui.el, ui.pos.left, ui.pos.top)
           if (ui.mode !== 'actions' || ui.quote === '') return
           var rect = null
           var sel = window.getSelection()
@@ -1227,6 +1229,7 @@ window.__ModuleLoader__.load({
           ui.el = card
           var head = document.createElement('div')
           head.className = 'dsh-ann-card-head'
+          makeEditorDraggable(head, card)
           var title = document.createElement('div')
           title.className = 'dsh-ann-card-title'
           title.textContent = ui.editingId !== null ? t('edit.editTitle') : t('edit.addTitle')
@@ -1274,13 +1277,34 @@ window.__ModuleLoader__.load({
           ta.focus()
           ta.setSelectionRange(ta.value.length, ta.value.length)
           requestAnimationFrame(function () {
-            var h = card.offsetHeight
-            var t = parseFloat(card.style.top)
-            if (t + h > window.innerHeight - 8) {
-              card.style.top = Math.max(8, window.innerHeight - h - 8) + 'px'
-            }
+            if (card.isConnected) positionEditor(card, ui.pos.left, ui.pos.top)
           })
         }
+      }
+
+      function positionEditor(card, left, top) {
+        ui.pos = {
+          left: Math.max(8, Math.min(left, window.innerWidth - card.offsetWidth - 8)),
+          top: Math.max(8, Math.min(top, window.innerHeight - card.offsetHeight - 8)),
+        }
+        card.style.left = ui.pos.left + 'px'
+        card.style.top = ui.pos.top + 'px'
+      }
+
+      function makeEditorDraggable(head, card) {
+        var drag = null
+        head.addEventListener('pointerdown', function (e) {
+          if (e.button !== 0 || !e.isPrimary || e.target.closest('button')) return
+          var r = card.getBoundingClientRect()
+          drag = { id: e.pointerId, x: e.clientX - r.left, y: e.clientY - r.top }
+          head.setPointerCapture(e.pointerId)
+          e.preventDefault()
+        })
+        head.addEventListener('pointermove', function (e) {
+          if (drag === null || e.pointerId !== drag.id) return
+          positionEditor(card, e.clientX - drag.x, e.clientY - drag.y)
+        })
+        head.addEventListener('lostpointercapture', function () { drag = null })
       }
 
       // ---------- 批注标记 ----------
@@ -1303,6 +1327,15 @@ window.__ModuleLoader__.load({
       }
 
       function renderMarkers() {
+        // 对整个标记层挖去输入框区域；滚动、尺寸变化时即使原文没动也要刷新。
+        var composer = document.querySelector('[data-composer-card]')
+        var r = composer !== null ? composer.getBoundingClientRect() : null
+        overlay.style.clipPath = r !== null && r.width > 0 && r.height > 0
+          ? 'polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, '
+            + r.left + 'px ' + r.top + 'px, ' + r.right + 'px ' + r.top + 'px, '
+            + r.right + 'px ' + r.bottom + 'px, ' + r.left + 'px ' + r.bottom + 'px, '
+            + r.left + 'px ' + r.top + 'px)'
+          : 'none'
         var sig = markersSignature()
         if (sig !== markersSig) {
           markersSig = sig
