@@ -121,6 +121,7 @@ step('历史消息仍被重装饰（标签 + 块隐藏）', deco.tagged === 1 &&
 
 // ---- 真实发送仍会清空（watchInputDraft 草稿迁移是唯一权威）----
 await page.evaluate(() => {
+  window.__shells.A.setDraft('新发送的问题')
   const ta = document.getElementById('ta')
   ta.focus()
   ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
@@ -135,7 +136,7 @@ await page.evaluate(() => {
   const row = document.createElement('div')
   row.setAttribute('data-chat-flow-kind', 'user-step')
   row.innerHTML = `<div class="x_bubble"></div>`
-  row.querySelector('.x_bubble').textContent = block + '新发送的问题'
+  row.querySelector('.x_bubble').textContent = block
   document.getElementById('flow').appendChild(row)
 })
 await page.waitForTimeout(1200)
@@ -150,6 +151,41 @@ const sendDeco = await page.evaluate(() => {
 })
 step('发送后待发送批注清空（内存 + 存储）', s.chip === null && s.storedA === null, JSON.stringify(s))
 step('刚发送的消息用发送暂存数据贴标签', sendDeco.tagText === '批注 ×1' && sendDeco.blockHidden, JSON.stringify(sendDeco))
+
+// ---- 纯批注发送：无空提问，清空后贴标签，重载插件仍能反解析 ----
+await page.evaluate(() => {
+  window.__sessions.switchTo('B')
+  localStorage.setItem('dsh.annotation.pending.v1.A', JSON.stringify([{
+    id: 'q-only', text: '纯批注原文', note: '解释这一句',
+  }]))
+  window.__sessions.switchTo('A')
+  window.__shells.A.setDraft(' \n\t ')
+  document.getElementById('ta').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+  window.__onlyBlock = window.__shells.A.draft
+})
+const onlyBlock = await page.evaluate(() => window.__onlyBlock)
+step('空白草稿不再追加空提问或要求回答不存在的问题', !/(提问：|Ask:)\s*$/.test(onlyBlock) && !onlyBlock.includes('最后再回答我的问题'))
+await page.evaluate(() => {
+  window.__shells.A.clear()
+  const row = document.createElement('div')
+  row.id = 'only-row'
+  row.setAttribute('data-chat-flow-kind', 'user-step')
+  row.innerHTML = '<div class="x_bubble"></div>'
+  row.firstChild.textContent = window.__onlyBlock
+  document.getElementById('flow').appendChild(row)
+})
+await page.waitForFunction(() => document.querySelector('#only-row [data-annotation-bubble-tag]'))
+s = await state()
+step('纯批注发送后清空待发送记录并隐藏正文', s.storedA === null && await page.locator('#only-row .x_bubble').textContent() === '批注 ×1')
+await page.evaluate(() => {
+  window.__dispose()
+  document.querySelector('#only-row .x_bubble').textContent = window.__onlyBlock
+  window.__dispose = window.__annExports.apply(window.__ctx)
+})
+await page.waitForFunction(() => document.querySelector('#only-row [data-annotation-bubble-tag]'))
+await page.locator('#only-row [data-annotation-bubble-tag]').hover()
+await page.waitForFunction(() => document.querySelector('.dsh-ann-tip')?.textContent.includes('解释这一句'))
+step('重载后纯批注标签仍可查看原文和批注', await page.locator('.dsh-ann-tip').textContent().then(text => text.includes('纯批注原文') && text.includes('解释这一句')))
 
 console.log('---CONSOLE---'); console.log(errs.join('\n') || '(none)')
 srv.close()
