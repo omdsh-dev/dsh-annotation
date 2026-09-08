@@ -1,5 +1,7 @@
 # dsh-annotation
 
+Verified hosts: DSH 0.1.2-rc.1 for stable releases and DSH 0.1.5-alpha.1 for previews. These are core versions, not Desktop shell versions.
+
 <div align="center">
 
 **English** · [简体中文](./README.zh-CN.md)

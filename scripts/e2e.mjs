@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 import { spawn, spawnSync } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
-import { createWriteStream, existsSync, rmSync } from 'node:fs'
+import { createHash, randomUUID } from 'node:crypto'
+import { createWriteStream, existsSync, readFileSync, rmSync } from 'node:fs'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -18,11 +18,16 @@ const arg = (name) => {
 }
 const PORT = Number(arg('--port') ?? 3191)
 const INSTALL = arg('--install') ?? 'link'
+const LIVE = process.argv.includes('--live')
+const TARBALL = arg('--tarball')
+const TARBALL_SHA = arg('--tarball-sha256')
 const fail = (message) => { console.error(`✗ ${message}`); process.exit(1) }
 const findDshWebUrl = (output) => output.match(/dsh web: (http:\/\/127\.0\.0\.1:\d+(?:\/\?token=[A-Za-z0-9_-]+)?)/u)?.[1]
 
-if (!['link', 'npm'].includes(INSTALL)) fail(`--install 仅允许 link | npm，收到 ${INSTALL}`)
+if (!['link', 'npm', 'tarball'].includes(INSTALL)) fail(`未知安装方式 ${INSTALL}`)
+if (INSTALL === 'tarball' && (!TARBALL || !TARBALL_SHA || createHash('sha256').update(readFileSync(TARBALL)).digest('hex') !== TARBALL_SHA)) fail('安装包 SHA-256 不匹配')
 if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) fail(`非法端口: ${PORT}`)
+if (LIVE && !process.env.DEEPSEEK_API_KEY) fail('--live 需要真实模型凭据')
 if (!existsSync(DSH_BIN)) fail(`DSH_BIN 不存在: ${DSH_BIN}`)
 await new Promise((resolveProbe) => {
   const probe = createServer()
@@ -34,6 +39,7 @@ const DSH_HOME = await (await import('node:fs/promises')).mkdtemp(join(tmpdir(),
 const env = { ...process.env, DSH_HOME }
 const logPath = join(DSH_HOME, 'dsh-web.log')
 let web = null
+let browser = null
 const stopWeb = () => {
   if (web === null) return
   try { process.kill(-web.pid, 'SIGTERM') } catch { /* already stopped */ }
@@ -46,7 +52,7 @@ process.on('exit', () => {
 })
 
 try {
-  const source = INSTALL === 'npm' ? '@changfenhuang/dsh-annotation' : `link:${REPO_ROOT}`
+  const source = INSTALL === 'tarball' ? TARBALL : INSTALL === 'npm' ? '@changfenhuang/dsh-annotation' : `link:${REPO_ROOT}`
   const installed = spawnSync(DSH_BIN, ['plugin', '--profile', 'web', 'add', source], { env, stdio: 'inherit' })
   if (installed.status !== 0) fail('插件安装失败')
 
@@ -79,8 +85,8 @@ try {
   if (readyUrl === undefined) fail(`dsh web 120 秒内未就绪（日志: ${logPath}）`)
 
   const { chromium } = await import(pathToFileURL(join(DSH_ROOT, 'apps/web/node_modules/playwright/index.mjs')).href)
-  const browser = await chromium.launch({ channel: 'chrome', headless: true })
-  const page = await browser.newPage()
+  browser = await chromium.launch({ channel: 'chrome', headless: true })
+  const page = await browser.newPage({ locale: 'zh-CN' })
   const pageErrors = []
   page.on('pageerror', error => pageErrors.push(String(error)))
   await page.goto(readyUrl, { waitUntil: 'domcontentloaded', timeout: 60000 })
@@ -101,10 +107,52 @@ try {
   if (!state.mounted) fail('Annotation bundle 已加载，但页面没有挂载批注入口')
   if (pageErrors.length > 0) fail(`页面异常: ${pageErrors.slice(0, 3).join(' | ')}`)
 
+  await page.getByRole('button', { name: '继续', exact: true }).click()
+  if (!LIVE) await page.getByRole('button', { name: '稍后配置', exact: true }).click()
+  await page.getByText('新会话', { exact: false }).first().click()
+  await page.getByText('dsh-annotation-e2e', { exact: true }).first().click()
+  const composer = page.locator('[data-composer-input]')
+  await composer.waitFor({ state: 'visible' })
+  // Deterministic source passage; selection, composer, session and persistence are real host services.
+  await page.evaluate(() => {
+    const row = document.createElement('div')
+    row.setAttribute('data-chat-flow-kind', 'assistant-step')
+    const passage = document.createElement('p')
+    passage.id = 'annotation-smoke-source'
+    passage.textContent = '这是一段用于验证批注的原文。'
+    row.appendChild(passage)
+    document.body.appendChild(row)
+    const range = document.createRange()
+    range.selectNodeContents(passage)
+    getSelection().removeAllRanges()
+    getSelection().addRange(range)
+  })
+  await page.locator('.dsh-ann-bar button').click()
+  await page.locator('.dsh-ann-input').fill('请解释这一句')
+  await page.locator('.dsh-ann-action').click()
+  await page.locator('[data-annotation-chip]').waitFor({ state: 'visible' })
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.locator('[data-annotation-chip]').waitFor({ state: 'visible' })
+  if (pageErrors.length > 0) throw new Error(`交互异常: ${pageErrors.join(' | ')}`)
+  console.log('PASS 真实宿主选区、保存和刷新恢复')
+  if (LIVE) {
+    await composer.press('Enter')
+    const tag = page.locator('[data-annotation-bubble-tag]').filter({ hasText: '批注 ×1' })
+    await tag.waitFor({ state: 'visible' })
+    if ((await composer.textContent()).trim() !== '') fail('发送后草稿未清空')
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await tag.waitFor({ state: 'visible' })
+    await tag.hover()
+    await page.waitForFunction(() => document.querySelector('.dsh-ann-tip')?.textContent.includes('请解释这一句'))
+    if (pageErrors.length > 0) fail(`交互异常: ${pageErrors.join(' | ')}`)
+    console.log('PASS 真实宿主选区、保存、刷新恢复、纯批注发送和历史标签')
+  }
+
   await browser.close()
   stopWeb()
   await rm(DSH_HOME, { recursive: true, force: true })
   console.log('PASS Annotation smoke e2e')
 } catch (error) {
+  await browser?.close()
   fail(error instanceof Error ? error.stack ?? error.message : String(error))
 }
