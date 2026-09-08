@@ -196,6 +196,8 @@ window.__ModuleLoader__.load({
           head: '我批注了以下 {n} 处内容（编号与原文对应），请针对它们回答我的问题：',
           notePrefix: '批注：',
           format: '请用「Annotation 1：…」到「Annotation {n}：…」的格式，逐条回应上面每一条批注，最后再回答我的问题。',
+          headOnly: '我批注了以下内容，请逐条回应：',
+          formatOnly: '请按「Annotation N：…」的格式，逐条回应以上批注。',
           marker: '提问：',
         },
       },
@@ -231,6 +233,8 @@ window.__ModuleLoader__.load({
           head: 'I annotated the following {n} passage(s) (the numbers match the quotes below); please respond to them when answering my question:',
           notePrefix: 'Note: ',
           format: 'Please respond to each annotation in the format "Annotation 1: …" through "Annotation {n}: …", then answer my question.',
+          headOnly: 'I annotated the following passages; please respond to each annotation:',
+          formatOnly: 'Please respond to each annotation above in the format "Annotation N: …".',
           marker: 'Ask:',
         },
       },
@@ -1482,9 +1486,8 @@ window.__ModuleLoader__.load({
         render()
       }
 
-      /** 组装批注块（编号 + 原文 + 批注，结尾带唯一的「提问：」分隔标记——
-       *  不用「问题：」是因为标题行「回答我的问题：」里也含它，气泡隐藏手术会误命中）。 */
-      function buildBlock() {
+      /** 组装批注块；只有附带正文时才添加「提问：」分隔标记。 */
+      function buildBlock(hasQuestion) {
         var n = ui.quotes.length
         var parts = ui.quotes.map(function (q, i) {
           var s = (i + 1) + '. ' + q.text.replace(/\n/g, '\n   ')
@@ -1493,9 +1496,10 @@ window.__ModuleLoader__.load({
           }
           return s
         })
-        return t('block.head', { n: n }) + '\n\n'
+        return t(hasQuestion ? 'block.head' : 'block.headOnly', { n: n }) + '\n\n'
           + parts.join('\n\n')
-          + '\n\n' + t('block.format', { n: n }) + '\n\n' + t('block.marker')
+          + '\n\n' + t(hasQuestion ? 'block.format' : 'block.formatOnly', { n: n })
+          + (hasQuestion ? '\n\n' + t('block.marker') : '')
       }
 
       function shouldAttachForEnter(e, draft) {
@@ -1532,8 +1536,9 @@ window.__ModuleLoader__.load({
             annotationAttached = true
             return true
           }
-          var block = buildBlock()
-          shell.setDraft(block + '\n' + draft)
+          var hasQuestion = draft.trim() !== ''
+          var block = buildBlock(hasQuestion)
+          shell.setDraft(block + (hasQuestion ? '\n' + draft : ''))
           annotationAttached = true
           console.log('[annotation] 批注块已拼入草稿，回车将随消息发送（' + ui.quotes.length + ' 条）')
           return true
@@ -1818,6 +1823,15 @@ window.__ModuleLoader__.load({
           while ((n = walker.nextNode()) !== null) {
             nodes.push(n)
             full += n.nodeValue || ''
+          }
+          // 纯批注用完整首尾文案识别，避免原文中的「提问：」被误当成正文分隔符。
+          var annotationOnly = ['zh', 'en'].some(function (lang) {
+            return full.indexOf(dictVal(lang, 'block.headOnly')) === 0
+              && full.trimEnd().endsWith(dictVal(lang, 'block.formatOnly'))
+          })
+          if (annotationOnly) {
+            nodes.forEach(function (node) { node.nodeValue = '' })
+            return true
           }
           // 标记定位：当前语言优先（zh「提问：」/ en「Ask:」，均先带「\n」再裸匹配），
           // 另兼容另一语言与「问题：」老格式，保证历史消息跨语言切换可解析。
