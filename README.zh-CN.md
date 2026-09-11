@@ -1,6 +1,6 @@
 # dsh-annotation
 
-验证宿主：正式版 DSH 0.1.2-rc.1；预览版 DSH 0.1.5-alpha.1。版本号指 DSH 内核，不是 Desktop 外壳。
+验证宿主：DSH 0.1.5-rc.2；最低支持线仍验证 DSH 0.1.2-rc.1。版本号指 DSH 内核，不是 Desktop 外壳。
 
 <div align="center">
 

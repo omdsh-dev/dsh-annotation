@@ -1,6 +1,6 @@
 # dsh-annotation
 
-Verified hosts: DSH 0.1.2-rc.1 for stable releases and DSH 0.1.5-alpha.1 for previews. These are core versions, not Desktop shell versions.
+Verified hosts: DSH 0.1.5-rc.2 and the 0.1.2-rc.1 minimum. These are core versions, not Desktop shell versions.
 
 <div align="center">
 
