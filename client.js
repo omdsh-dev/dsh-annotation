@@ -1127,7 +1127,12 @@ window.__ModuleLoader__.load({
         // 纯批注能直接发出，同时不会把批注块明文留在输入框。
         if (e.key === 'Enter' && !e.shiftKey && !e.altKey
           && ui.quotes.length > 0 && !isImeKeyBlocked(e)) {
-          var input = e.target instanceof Element && e.target.closest('[data-composer-input]')
+          // 双分支门控：DSH ≥0.1.2 是 div[data-composer-input] 输入区，≤0.1.1 是 textarea。
+          // 1.4.6 适配 0.1.2 时移除了 textarea 分支，旧核心上 Enter 因此不再拼入批注块
+          // （只剩发送按钮路径可用）。两条分支并行保留。
+          var input = e.target instanceof Element &&
+            (e.target.closest('[data-composer-input]') ||
+              (e.target instanceof HTMLTextAreaElement && e.target.closest('[data-composer-card]')))
           if (input !== null && input.closest('[data-composer-card]') !== null) {
             var attached = attachAndSend(e)
             if (attached && (e.ctrlKey || e.metaKey)) {

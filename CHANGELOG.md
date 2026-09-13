@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### 兼容性
+- **恢复 DSH 0.1.1（textarea 输入区）上的 Enter 批注拼稿**：1.4.6 适配 0.1.2 的 `div[data-composer-input]` 输入区时，移除了 Enter keydown 门控里的 textarea 分支，旧核心上 Enter 不再拼入批注块（发送按钮路径不受影响，但 Enter 发送会静默丢弃待发送批注）。门控现并行接受 `div[data-composer-input]` 与 textarea 两条分支；0.1.1-rc.2 实测恢复，div 分支行为不变。
+
 ## [1.4.10] - 2026-09-11
 
 - CI 与发布包验收固定到 DSH 0.1.5-rc.2，继续验证 0.1.2-rc.1 支持下限。
