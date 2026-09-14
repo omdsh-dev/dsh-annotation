@@ -109,8 +109,28 @@ try {
 
   await page.getByRole('button', { name: '继续', exact: true }).click()
   if (!LIVE) await page.getByRole('button', { name: '稍后配置', exact: true }).click()
-  await page.getByText('新会话', { exact: false }).first().click()
-  await page.getByText('dsh-annotation-e2e', { exact: true }).first().click()
+  if (process.argv.includes('--sidebar')) {
+    // A real persisted session is required: the unsent draft has no conversation header.
+    const result = await page.evaluate(async workspaceId => {
+      const request = async (method, args) => {
+        const response = await fetch('/api/' + method, { method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ type: 'client-request', rpcId: crypto.randomUUID(), method, payload: { args } }) })
+        const frame = await response.json()
+        if (!frame.result.ok) throw new Error(JSON.stringify(frame.result))
+        return frame.result.value
+      }
+      const created = await request('session/create', { request: { workspaceId } })
+      await request('session/prompt', { request: { sessionId: created.sessionId, requestId: crypto.randomUUID(), mode: 'queue', content: [{ type: 'text', text: '文件批注界面测试' }] } })
+      await request('session/rename', { request: { sessionId: created.sessionId, title: '文件批注验收' } })
+      return created
+    }, workspaceId)
+    console.log('测试会话已创建:', result.sessionId)
+
+    await page.getByText('文件批注验收', { exact: true }).first().click()
+  } else {
+    await page.getByText('新会话', { exact: false }).first().click()
+    await page.getByText('dsh-annotation-e2e', { exact: true }).first().click()
+  }
   const composer = page.locator('[data-composer-input]')
   await composer.waitFor({ state: 'visible' })
   // Deterministic source passage; selection, composer, session and persistence are real host services.
@@ -135,6 +155,44 @@ try {
   await page.locator('[data-annotation-chip]').waitFor({ state: 'visible' })
   if (pageErrors.length > 0) throw new Error(`交互异常: ${pageErrors.join(' | ')}`)
   console.log('PASS 真实宿主选区、保存和刷新恢复')
+  if (process.argv.includes('--sidebar')) {
+    const later = page.getByRole('button', { name: '稍后配置', exact: true })
+    if (await later.isVisible()) await later.click()
+    async function openFile() {
+      const expand = page.getByRole('button', { name: '打开右侧边栏', exact: true })
+      if (await expand.isVisible()) await expand.click()
+      if (!await page.locator('[data-sidebar-right-guide-entry="files"]').isVisible()) {
+        await page.getByRole('button', { name: '新标签页', exact: true }).click()
+      }
+      await page.getByText('工作区文件', { exact: true }).click()
+      await page.locator('[data-files-entry="file"][data-files-path$="/README.zh-CN.md"] button').click()
+      await page.locator('[data-document-markdown] p').first().waitFor({ state: 'visible' })
+    }
+    await openFile()
+    const paragraph = page.locator('[data-document-markdown] p').first()
+    await paragraph.waitFor({ state: 'visible' })
+    await paragraph.evaluate(el => {
+      const range = document.createRange()
+      range.selectNodeContents(el)
+      getSelection().removeAllRanges(); getSelection().addRange(range)
+    })
+    await page.locator('.dsh-ann-bar button').click()
+    if (!(await page.locator('.dsh-ann-quote').getAttribute('title')).includes('README.zh-CN.md')) fail('编辑器未显示文件路径')
+    await page.locator('.dsh-ann-input').fill('请解释这个文件段落')
+    await page.locator('.dsh-ann-action').click()
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await page.locator('[data-annotation-chip]').waitFor({ state: 'visible' })
+    if (await later.isVisible()) await later.click()
+    // The host closes sidebar tabs on reload; reopen the same file through its UI.
+    await openFile()
+    await page.locator('.dsh-ann-num').waitFor({ state: 'visible' })
+    await page.locator('.dsh-ann-num').click()
+    if (await page.locator('.dsh-ann-input').inputValue() !== '请解释这个文件段落') fail('文件批注刷新恢复失败')
+    await page.locator('.dsh-ann-card-head button').click()
+    if (pageErrors.length > 0) fail(`侧边栏异常: ${pageErrors.join(' | ')}`)
+    console.log('PASS 真实侧边栏打开工作区文件、选区、来源路径、保存、刷新后重新打开定位、重新编辑')
+  }
+
   if (LIVE) {
     await composer.press('Enter')
     const tag = page.locator('[data-annotation-bubble-tag]').filter({ hasText: '批注 ×1' })

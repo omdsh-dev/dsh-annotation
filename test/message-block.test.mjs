@@ -9,22 +9,24 @@ function fn(name) {
   assert.ok(match, name)
   return match[0]
 }
-function harness(lang, draft) {
+function harness(lang, draft, sourcePath) {
   const nodes = []
   const bubble = { querySelectorAll: () => [], get textContent() { return nodes.map(n => n.nodeValue).join('') } }
   const row = { querySelector: () => bubble }
   const shell = { state: { getSnapshot: () => ({ draft }) }, setDraft(value) { draft = value } }
   const document = { createTreeWalker: () => { let i = 0; return { nextNode: () => nodes[i++] ?? null } } }
-  const api = Function('shell', 'document', 'NodeFilter', `
+  const api = Function('shell', 'document', 'NodeFilter', 'sourcePath', `
     ${protocol}
+    ${source.slice(source.indexOf('    function quoteWithSource('), source.indexOf('    function assistantRows('))}
     var ui = { quotes: [{ text: '原文包含提问：这个词', note: '解释一下' }] }
+    ui.quotes[0].sourcePath = sourcePath
     var annotationAttached = false
     var sessions = { list: { getSnapshot: () => ({ current: 'session' }) }, scope: () => ({}) }
     var ctx = { conversation: { input: { for: () => shell } } }
     function showToast() {}
     ${['buildBlock', 'shouldAttachForEnter', 'isCommandDraft', 'attachAndSend', 'hideAnnotationBlock', 'parseItemsFromBubble'].map(fn).join('\n')}
     return { setLang, attachAndSend, hideAnnotationBlock, parseItemsFromBubble }
-  `)(shell, document, { SHOW_TEXT: 4 })
+  `)(shell, document, { SHOW_TEXT: 4 }, sourcePath)
   api.setLang(lang)
   return { api, row, bubble, shell, render(value) {
     nodes.length = 0
@@ -62,5 +64,17 @@ for (const lang of ['zh', 'en']) {
     h.render(lang === 'zh' ? '我批注了以下 1 处内容' : 'I annotated the following 1 passage')
     assert.equal(h.api.hideAnnotationBlock(h.row), false)
     assert.notEqual(h.bubble.textContent, '')
+  })
+}
+
+for (const lang of ['zh', 'en']) {
+  test(`${lang}: 文件路径随批注发送，刷新后的标签仍含完整路径`, () => {
+    const h = harness(lang, '', '文档/结果 #1.md')
+    assert.equal(h.api.attachAndSend({}), true)
+    const sent = h.shell.state.getSnapshot().draft
+    assert.ok(sent.includes('[文档/结果 #1.md]\n   原文包含提问：这个词'))
+    h.render(sent)
+    assert.equal(h.api.parseItemsFromBubble(h.row)[0].text, '[文档/结果 #1.md]\n原文包含提问：这个词')
+    assert.equal(h.api.hideAnnotationBlock(h.row), true)
   })
 }

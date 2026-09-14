@@ -358,6 +358,57 @@ window.__ModuleLoader__.load({
       return null
     }
 
+    // 只接管宿主的可选文本正文；标题、按钮、PDF 和 iframe 不属于此接口。
+    var DOCUMENT_TEXT = '[data-textpreview-plain], [data-document-markdown], [data-code-preview] pre'
+
+    function documentSourceOf(node) {
+      var el = node instanceof Element ? node : node && node.parentElement
+      if (el && el.closest('button, input, textarea, [contenteditable="true"]')) return null
+      var root = el && el.closest(DOCUMENT_TEXT)
+      var preview = root && root.closest('[data-textpreview-url]')
+      if (!preview) return null
+      var url = preview.getAttribute('data-textpreview-url') || ''
+      var match = /^dsh-resource:\/\/file\/session\/([^/]+)\/(.+)$/.exec(url)
+      if (!match) return null
+      try {
+        var sessionId = decodeURIComponent(match[1])
+        var path = match[2].split('/').map(decodeURIComponent).join('/')
+        if (/[\u0000-\u001f\u007f]/.test(path) || /[?#]/.test(url)) return null
+        return { root: root, sourceUrl: url, sourcePath: path, sessionId: sessionId }
+      } catch (_) { return null }
+    }
+
+    function annotationRootOf(node) {
+      var source = documentSourceOf(node)
+      return source !== null ? source.root : assistantRowOf(node)
+    }
+
+    function quoteRects(range, saved) {
+      var rects = Array.from(range.getClientRects())
+      if (!saved.sourceUrl) return rects
+      var clip = { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight }
+      var node = range.commonAncestorContainer
+      var el = node instanceof Element ? node : node.parentElement
+      for (; el && el !== document.body; el = el.parentElement) {
+        var style = getComputedStyle(el)
+        var box = el.getBoundingClientRect()
+        if (/auto|scroll|hidden|clip/.test(style.overflowX)) {
+          clip.left = Math.max(clip.left, box.left); clip.right = Math.min(clip.right, box.right)
+        }
+        if (/auto|scroll|hidden|clip/.test(style.overflowY)) {
+          clip.top = Math.max(clip.top, box.top); clip.bottom = Math.min(clip.bottom, box.bottom)
+        }
+      }
+      return rects.map(function (r) {
+        var left = Math.max(r.left, clip.left), top = Math.max(r.top, clip.top)
+        return new DOMRect(left, top, Math.max(0, Math.min(r.right, clip.right) - left), Math.max(0, Math.min(r.bottom, clip.bottom) - top))
+      }).filter(function (r) { return r.width > 0 && r.height > 0 })
+    }
+
+    function quoteWithSource(q) {
+      return q.sourcePath ? '[' + q.sourcePath + ']\n' + q.text : q.text
+    }
+
     function assistantRows() {
       var modern = document.querySelectorAll('[data-chat-flow-kind="assistant-step"]')
       if (modern.length > 0) return Array.prototype.slice.call(modern)
@@ -579,6 +630,24 @@ window.__ModuleLoader__.load({
 
     /** 定位批注的 Range：消息 seq 锚定优先，空白不敏感重搜兜底。 */
     function locateQuote(quote, saved) {
+      if (saved && saved.sourceUrl) {
+        var bodies = document.querySelectorAll(DOCUMENT_TEXT)
+        for (var d = 0; d < bodies.length; d++) {
+          var source = documentSourceOf(bodies[d])
+          if (source === null || source.sourceUrl !== saved.sourceUrl || bodies[d].getClientRects().length === 0) continue
+          if (saved.range && bodies[d].contains(saved.range.commonAncestorContainer)
+            && saved.range.toString().trim() === quote) return saved.range
+          if (saved.textOffset >= 0) {
+            var exact = rangeFromOffset(bodies[d], saved.textOffset, quote.length)
+            if (exact !== null && exact.toString() === quote) return exact
+          }
+          // 文件变化后只接受唯一匹配，避免标记重复代码中的另一处。
+          var text = bodies[d].textContent || ''
+          var at = text.indexOf(quote)
+          if (at >= 0 && text.indexOf(quote, at + 1) === -1) return rangeFromOffset(bodies[d], at, quote.length)
+        }
+        return null
+      }
       if (saved !== undefined && saved !== null && saved.range && saved.range.startContainer) {
         try {
           if (saved.range.startContainer.isConnected && saved.range.endContainer.isConnected) {
@@ -800,6 +869,8 @@ window.__ModuleLoader__.load({
             id: q.id,
             text: q.text,
             note: typeof q.note === 'string' ? q.note : '',
+            ...(typeof q.sourceUrl === 'string' && typeof q.sourcePath === 'string'
+              ? { sourceUrl: q.sourceUrl, sourcePath: q.sourcePath } : {}),
             range: null,
             seqKey: typeof q.seqKey === 'string' ? q.seqKey : '',
             rowHead: typeof q.rowHead === 'string' ? q.rowHead : '',
@@ -819,6 +890,7 @@ window.__ModuleLoader__.load({
           id: q.id,
           text: q.text,
           note: q.note || '',
+          ...(q.sourceUrl ? { sourceUrl: q.sourceUrl, sourcePath: q.sourcePath } : {}),
           seqKey: q.seqKey || '',
           rowHead: q.rowHead || '',
           textOffset: Number.isFinite(q.textOffset) ? q.textOffset : -1,
@@ -976,9 +1048,12 @@ window.__ModuleLoader__.load({
         var text = sel.toString().trim()
         if (text.length === 0) { clearSettle(); return }
         var key = selectionKey(sel)
-        if (ui.mode === 'actions' && key === ui.lastKey) { clearSettle(); return }
-        var rootEl = assistantRowOf(range.commonAncestorContainer)
+        var rootEl = annotationRootOf(range.commonAncestorContainer)
+        var source = documentSourceOf(range.commonAncestorContainer)
+        if (source !== null && source.sessionId !== sessions.list.getSnapshot().current) rootEl = null
         if (rootEl === null) { clearSettle(); closeToolbar(); return }
+        if (ui.mode === 'actions' && key === ui.lastKey && text === ui.quote && rootEl === ui.selectionRoot
+          && (ui.source && ui.source.sourceUrl) === (source && source.sourceUrl)) { clearSettle(); return }
         clearSettle()
         settleTimer = setTimeout(function () {
           settleTimer = null
@@ -986,11 +1061,14 @@ window.__ModuleLoader__.load({
           var s = window.getSelection()
           if (s === null || s.isCollapsed || selectionKey(s) !== key) return
           var r = s.getRangeAt(0)
-          if (assistantRowOf(r.commonAncestorContainer) === null) return
+          if (annotationRootOf(r.commonAncestorContainer) !== rootEl) return
+          var currentSource = documentSourceOf(r.commonAncestorContainer)
+          if ((currentSource && currentSource.sourceUrl) !== (source && source.sourceUrl)
+            || (source !== null && source.sessionId !== sessions.list.getSnapshot().current)) return
           var rect = r.getBoundingClientRect()
           if (rect.width === 0 || rect.height === 0) return
           var p = placeAbove(rect, 40)
-          if (ui.mode === 'actions' && ui.quote === text) {
+          if (ui.mode === 'actions' && ui.quote === text && (ui.source && ui.source.sourceUrl) === (source && source.sourceUrl)) {
             ui.lastKey = key
             ui.pos = p
             if (ui.el !== null && ui.el.style) {
@@ -1002,6 +1080,8 @@ window.__ModuleLoader__.load({
           ui.lastKey = key
           ui.mode = 'actions'
           ui.quote = text
+          ui.source = source
+          ui.selectionRoot = rootEl
           ui.error = null
           ui.pos = p
           render()
@@ -1039,13 +1119,14 @@ window.__ModuleLoader__.load({
           var sel = window.getSelection()
           if (sel !== null && !sel.isCollapsed && sel.rangeCount > 0) {
             var live = sel.getRangeAt(0)
-            if (assistantRowOf(live.commonAncestorContainer) !== null
+            if (annotationRootOf(live.commonAncestorContainer) === ui.selectionRoot
+              && (documentSourceOf(live.commonAncestorContainer)?.sourceUrl || '') === (ui.source && ui.source.sourceUrl || '')
               && sel.toString().trim() === ui.quote) {
               rect = live.getBoundingClientRect()
             }
           }
           if (rect === null) {
-            var range = locateQuote(ui.quote)
+            var range = locateQuote(ui.quote, ui.source)
             if (range !== null) rect = range.getBoundingClientRect()
           }
           if (rect === null || rect.width === 0 || rect.height === 0) {
@@ -1215,7 +1296,7 @@ window.__ModuleLoader__.load({
           bar.className = 'dsh-ann-bar'
           bar.style.left = ui.pos.left + 'px'
           bar.style.top = ui.pos.top + 'px'
-          var already = ui.quotes.some(function (q) { return q.text === ui.quote })
+          var already = ui.quotes.some(function (q) { return q.text === ui.quote && (q.sourceUrl || '') === (ui.source && ui.source.sourceUrl || '') })
           bar.appendChild(ghostButton(
             already ? null : ICONS.plus,
             already ? t('actions.already') : t('actions.annotate'),
@@ -1242,8 +1323,8 @@ window.__ModuleLoader__.load({
           card.appendChild(head)
           var quote = document.createElement('div')
           quote.className = 'dsh-ann-quote'
-          quote.textContent = truncate(ui.quote, 200)
-          quote.title = ui.quote
+          quote.textContent = truncate(quoteWithSource({ text: ui.quote, sourcePath: ui.source && ui.source.sourcePath }), 200)
+          quote.title = quoteWithSource({ text: ui.quote, sourcePath: ui.source && ui.source.sourcePath })
           card.appendChild(quote)
           var ta = document.createElement('textarea')
           ta.className = 'dsh-ann-input'
@@ -1319,7 +1400,7 @@ window.__ModuleLoader__.load({
           var q = ui.quotes[i]
           var range = locateQuote(q.text, q)
           if (range === null) { parts.push(q.id + ':gone'); continue }
-          var rects = range.getClientRects()
+          var rects = quoteRects(range, q)
           for (var c = 0; c < rects.length; c++) {
             var r = rects[c]
             if (r.width === 0 || r.height === 0) continue
@@ -1355,7 +1436,7 @@ window.__ModuleLoader__.load({
           var q = ui.quotes[i]
           var range = locateQuote(q.text, q)
           if (range === null) continue
-          var rects = range.getClientRects()
+          var rects = quoteRects(range, q)
           for (var c = 0; c < rects.length; c++) {
             var rect = rects[c]
             if (rect.width === 0 || rect.height === 0) continue
@@ -1430,6 +1511,13 @@ window.__ModuleLoader__.load({
           if (textMatch) {
             anchor.range = live.cloneRange()
           }
+          var source = documentSourceOf(live.commonAncestorContainer)
+          if (source !== null) {
+            anchor.sourceUrl = source.sourceUrl
+            anchor.sourcePath = source.sourcePath
+            anchor.textOffset = offsetOfRangeInRow(source.root, live) + liveText.indexOf(text)
+            return anchor
+          }
           var node = live.commonAncestorContainer
           var el = node instanceof Element ? node : (node !== null ? node.parentElement : null)
           // 主视图锚 key 为 data-chat-anchor-key；focus-chat 视图为
@@ -1474,6 +1562,7 @@ window.__ModuleLoader__.load({
       function openEditorFor(q) {
         ui.mode = 'editing'
         ui.quote = q.text
+        ui.source = q
         ui.noteDraft = q.note !== undefined ? q.note : ''
         ui.error = null
         ui.editingId = q.id
@@ -1490,7 +1579,7 @@ window.__ModuleLoader__.load({
       function buildBlock(hasQuestion) {
         var n = ui.quotes.length
         var parts = ui.quotes.map(function (q, i) {
-          var s = (i + 1) + '. ' + q.text.replace(/\n/g, '\n   ')
+          var s = (i + 1) + '. ' + quoteWithSource(q).replace(/\n/g, '\n   ')
           if (q.note !== undefined && q.note.trim() !== '') {
             s += '\n   ' + t('block.notePrefix') + q.note.replace(/\n/g, '\n    ')
           }
@@ -1591,13 +1680,14 @@ window.__ModuleLoader__.load({
           }
           ui.editingId = null
         }
-        if (!ui.quotes.some(function (q) { return q.text === text })) {
+        if (!ui.quotes.some(function (q) { return q.text === text && (q.sourceUrl || '') === (ui.pendingAnchor && ui.pendingAnchor.sourceUrl || '') })) {
           var a = ui.pendingAnchor || { range: null, seqKey: '', rowHead: '', textOffset: -1, ctxBefore: '', ctxAfter: '' }
           ui.quotes.push({
             id: 'q-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6),
             text: text,
             note: note,
             range: a.range,
+            ...(a.sourceUrl ? { sourceUrl: a.sourceUrl, sourcePath: a.sourcePath } : {}),
             seqKey: a.seqKey,
             rowHead: a.rowHead,
             textOffset: a.textOffset,
@@ -1718,7 +1808,7 @@ window.__ModuleLoader__.load({
           num.textContent = String(i + 1)
           var body = document.createElement('span')
           body.style.cssText = 'font-size:11px;line-height:1.5;color:var(--dsw-alias-label-tertiary);'
-          body.textContent = truncate(q.text, 50)
+          body.textContent = truncate(quoteWithSource(q), 100)
           item.appendChild(num)
           item.appendChild(body)
           if (q.note !== undefined && q.note.trim() !== '') {
@@ -1774,7 +1864,7 @@ window.__ModuleLoader__.load({
             // 同时在刚发出的用户消息气泡上贴「N 条批注」标签。
             if (wasHad && d === '' && annotationAttached) {
               var sentItems = ui.quotes.map(function (q) {
-                return { text: q.text, note: q.note || '' }
+                return { text: quoteWithSource(q), note: q.note || '' }
               })
               ui.quotes = []
               annotationAttached = false
