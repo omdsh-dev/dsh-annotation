@@ -46,12 +46,19 @@ jobs:
       - name: Check
         run: pnpm run check
 
+      - name: Browser annotation interactions
+        run: |
+          node test/overlay-browser.mjs
+          node test/sidebar-browser.mjs
+        env:
+          PLAYWRIGHT_MODULE: ${{ github.workspace }}/../../.dsh/source/current/apps/web/node_modules/playwright/index.mjs
+
       - name: Verify plugin package
         id: pack
         run: node scripts/verify-pack.mjs
 
       - name: Smoke real DSH Web
-        run: node scripts/e2e.mjs --install tarball --tarball "${{ steps.pack.outputs.tarball }}" --tarball-sha256 "${{ steps.pack.outputs.sha256 }}" --port 3190
+        run: node scripts/e2e.mjs --install tarball --tarball "${{ steps.pack.outputs.tarball }}" --tarball-sha256 "${{ steps.pack.outputs.sha256 }}" --port 3190 ${{ matrix.node == 24 && '--sidebar' || '' }}
         env:
           DSH_ROOT: ${{ github.workspace }}/../../.dsh/source/current
           DSH_BIN: ${{ github.workspace }}/../../.dsh/source/current/apps/cli/lib/bin.js
