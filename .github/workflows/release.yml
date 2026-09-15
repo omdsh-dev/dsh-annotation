@@ -19,7 +19,7 @@ jobs:
     env:
       RELEASE_TAG: ${{ github.event.release.tag_name }}
       PRERELEASE: ${{ github.event.release.prerelease }}
-      HOST_REF: dsh-v0.1.5-rc.2
+      HOST_REF: dsh-v0.1.6-alpha.1
 
     steps:
       # actions/checkout@v4
@@ -111,7 +111,7 @@ jobs:
         run: node scripts/verify-pack.mjs
 
       - name: Smoke selected release channel
-        run: node scripts/e2e.mjs --install tarball --tarball "${{ steps.pack.outputs.tarball }}" --tarball-sha256 "${{ steps.pack.outputs.sha256 }}" --port 3190
+        run: node scripts/e2e.mjs --install tarball --tarball "${{ steps.pack.outputs.tarball }}" --tarball-sha256 "${{ steps.pack.outputs.sha256 }}" --port 3190 --sidebar
         env:
           DSH_ROOT: ${{ github.workspace }}/../../.dsh/source/current
           DSH_BIN: ${{ github.workspace }}/../../.dsh/source/current/apps/cli/lib/bin.js

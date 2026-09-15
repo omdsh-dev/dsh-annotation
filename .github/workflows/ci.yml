@@ -14,7 +14,7 @@ jobs:
           - node: 22
             host-ref: dsh-v0.1.2-rc.1
           - node: 24
-            host-ref: dsh-v0.1.5-rc.2
+            host-ref: dsh-v0.1.6-alpha.1
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
