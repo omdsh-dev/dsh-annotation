@@ -1,6 +1,8 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.11-preview.1] - 2026-09-15
+
+- 更新 preview 预发布验收宿主至 DSH 0.1.6-alpha.1；发布任务验证同一安装包后发布至 npm preview。
 
 - 支持 DSH 0.1.5-rc.2 侧边栏文本、Markdown 和代码文件批注，发送时携带来源路径；同文不同文件独立保存，刷新后按文件恢复（#57）。
 

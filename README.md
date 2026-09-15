@@ -1,8 +1,8 @@
 # dsh-annotation
 
-Verified hosts: DSH 0.1.5-rc.2 and the 0.1.2-rc.1 minimum. These are core versions, not Desktop shell versions.
+Verified hosts: DSH 0.1.6-alpha.1 and the 0.1.2-rc.1 minimum. These are core versions, not Desktop shell versions.
 
-Sidebar file annotations (DSH 0.1.5-rc.2): select plain text, Markdown, or code in a workspace file preview and use the same annotate, save, and Enter-to-send flow. The editor and model-facing quote include the file path. After reloading and reopening the original file, its markers are restored; identical passages in different files remain separate. PDF, images, and HTML inside iframes are not covered.
+Sidebar file annotations (DSH 0.1.6-alpha.1): select plain text, Markdown, or code in a workspace file preview and use the same annotate, save, and Enter-to-send flow. The editor and model-facing quote include the file path. After reloading and reopening the original file, its markers are restored; identical passages in different files remain separate. PDF, images, and HTML inside iframes are not covered.
 
 <div align="center">
 
