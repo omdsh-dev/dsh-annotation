@@ -13,21 +13,40 @@ const api = Function(`${i18n}
     return { setLang, t }
 `)()
 
-test('zh/en берутся как есть, любой другой язык — английский', () => {
+test('zh/en/ru берутся как есть, неизвестный язык — английский', () => {
   api.setLang('zh')
   assert.equal(api.t('actions.annotate'), '批注')
   api.setLang('en')
   assert.equal(api.t('actions.annotate'), 'Annotate')
+  api.setLang('ru')
+  assert.equal(api.t('actions.annotate'), 'Аннотировать')
 
-  for (const other of ['ru', 'ru-RU', 'fr', 'de', 'zh-Hans']) {
+  for (const other of ['fr', 'de', 'zh-Hans', 'pt-BR']) {
     api.setLang(other)
     assert.equal(api.t('actions.annotate'), 'Annotate', `для «${other}» ожидался английский`)
     assert.equal(api.t('edit.save'), 'Save annotation')
   }
 })
 
+test('протокол блока переведён целиком, включая разделитель вопроса', () => {
+  api.setLang('ru')
+  assert.match(api.t('block.head', { n: 2 }), /^Я аннотировал следующие/)
+  assert.match(api.t('block.headOnly'), /^Я аннотировал следующие/)
+  assert.equal(api.t('block.marker'), 'Вопрос:')
+  assert.equal(api.t('block.notePrefix'), 'Примечание: ')
+  assert.equal(
+    api.t('block.format', { n: 2 }),
+    'Ответьте на каждую аннотацию в формате «Annotation 1: …» — «Annotation 2: …», затем ответьте на мой вопрос.',
+  )
+  assert.match(api.t('block.formatOnly'), /Annotation N: /)
+  // 未知 ключ не подменяется чужим языком
+  assert.equal(api.t('nope.missing'), 'nope.missing')
+})
+
 test('плейсхолдеры подставляются в любом языке', () => {
   api.setLang('ru')
+  assert.equal(api.t('tip.title', { n: 3 }), 'Аннотации (3)')
+  api.setLang('en')
   assert.equal(api.t('tip.title', { n: 3 }), 'Annotations (3)')
   api.setLang('zh')
   assert.equal(api.t('tip.title', { n: 3 }), '批注（3 条）')

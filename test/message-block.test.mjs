@@ -33,19 +33,27 @@ function harness(lang, draft) {
   } }
 }
 
-for (const lang of ['zh', 'en']) {
+/** Языковая таблица: разделитель вопроса, инструкция с вопросом, заголовок блока. */
+const LANGS = {
+  zh: { marker: '提问：', withQuestion: /最后再回答我的问题/, head: '我批注了以下 1 处内容', other: 'en' },
+  en: { marker: 'Ask:', withQuestion: /then answer my question/, head: 'I annotated the following 1 passage', other: 'zh' },
+  ru: { marker: 'Вопрос:', withQuestion: /затем ответьте на мой вопрос/, head: 'Я аннотировал следующие', other: 'zh' },
+}
+
+for (const lang of Object.keys(LANGS)) {
+  const L = LANGS[lang]
   test(`${lang}: 空白草稿只发送批注，刷新后仍能解析和隐藏`, () => {
     for (const draft of ['', ' \n\t ']) {
       const h = harness(lang, draft)
       assert.equal(h.api.attachAndSend({}), true)
       const sent = h.shell.state.getSnapshot().draft
-      assert.doesNotMatch(sent, /(?:提问：|Ask:)\s*$/)
-      assert.doesNotMatch(sent, /最后再回答我的问题|then answer my question/)
+      assert.doesNotMatch(sent, /(?:提问：|Ask:|Вопрос:)\s*$/)
+      assert.doesNotMatch(sent, L.withQuestion)
       assert.match(sent, /Annotation/)
       assert.equal(h.api.attachAndSend({}), true)
       assert.equal(h.shell.state.getSnapshot().draft, sent, '重复发送前不重复拼稿')
       h.render(sent)
-      h.api.setLang(lang === 'zh' ? 'en' : 'zh')
+      h.api.setLang(L.other)
       assert.deepEqual(h.api.parseItemsFromBubble(h.row), [{ text: '原文包含提问：这个词', note: '解释一下' }])
       assert.equal(h.api.hideAnnotationBlock(h.row), true)
       assert.equal(h.bubble.textContent, '')
@@ -55,11 +63,11 @@ for (const lang of ['zh', 'en']) {
     const h = harness(lang, '我的问题\n第二行')
     h.api.attachAndSend({})
     const sent = h.shell.state.getSnapshot().draft
-    assert.ok(sent.endsWith((lang === 'zh' ? '提问：' : 'Ask:') + '\n我的问题\n第二行'))
+    assert.ok(sent.endsWith(L.marker + '\n我的问题\n第二行'))
     h.render(sent)
     assert.equal(h.api.hideAnnotationBlock(h.row), true)
     assert.equal(h.bubble.textContent, '我的问题\n第二行')
-    h.render(lang === 'zh' ? '我批注了以下 1 处内容' : 'I annotated the following 1 passage')
+    h.render(L.head)
     assert.equal(h.api.hideAnnotationBlock(h.row), false)
     assert.notEqual(h.bubble.textContent, '')
   })

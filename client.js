@@ -19,12 +19,16 @@
 //      可悬浮芯片（数据取最近一条带标签用户消息的 tag.__annotationItems，刷新
 //      自动重建；改 DOM 前先快照 TreeWalker 收集的文本节点再逐个替换，遍历
 //      中途 replaceChild 会让 walker 指针失效）
-//   7. 语言跟随 DSH locale 服务（v1.4）：UI 文案与协议块 zh/en 双语、实时切换，
-//      隐藏手术与反解析同时兼容「提问：」/「Ask:」与「问题：」老格式
+//   7. 语言跟随 DSH locale 服务（v1.4）：UI 文案与协议块 zh/en/ru 三语、实时切换，
+//      隐藏手术与反解析同时兼容「提问：」/「Ask:」/「Вопрос:」与「问题：」老格式；
+//      zh/en 之外的未知语言（fr、de…）走英文，绝不退回中文
 //
 // 消息格式（zh）：我批注了以下 N 处内容…\n\n1. 原文\n   批注：…\n\n
 //           请用「Annotation 1：…」…\n\n提问：
 // （en 用 I annotated the following N passage(s)… + Note: … + Ask:；
+//   ru 用 Я аннотировал следующие фрагменты (N шт.)… + Примечание: … + Вопрос:，
+//   但格式指令里的 «Annotation N: …» 三种语言都保留拉丁写法 —— 回复里按它做
+//   芯片替换（decorateAnnotationLabels），与界面语言无关；
 //   zh 分隔标记用「提问：」而非「问题：」——标题行「回答我的问题：」里也含
 //   它，气泡隐藏手术会误命中）
 //
@@ -238,14 +242,57 @@ window.__ModuleLoader__.load({
           marker: 'Ask:',
         },
       },
+      ru: {
+        actions: {
+          annotate: 'Аннотировать',
+          already: 'Уже аннотировано',
+          annotateTitle: 'Написать примечание к выделенному тексту',
+          alreadyTitle: 'Этот фрагмент уже в списке аннотаций',
+        },
+        edit: {
+          addTitle: 'Добавить аннотацию',
+          editTitle: 'Изменить аннотацию',
+          placeholder: 'Примечание… (можно пустым: тогда фрагмент просто помечается)',
+          save: 'Сохранить аннотацию',
+        },
+        common: { cancel: 'Отмена' },
+        error: { noSelection: 'Текст не выделен' },
+        // Три формы через «|» — их выбирает plural() по числу; у zh/en форма одна
+        // (строка без «|»), поэтому их вывод не меняется.
+        chip: { count: ' аннотация| аннотации| аннотаций' },
+        tip: { title: 'Аннотации ({n})', notePrefix: 'Примечание: ', del: 'Удал.' },
+        bubble: { tag: 'Аннотации ×{n}', title: 'В этом сообщении аннотаций: {n}' },
+        reply: {
+          headWithQuote: 'Источник аннотации {n}',
+          headNoQuote: 'Аннотация {n}',
+          notePrefix: 'Ваше примечание: ',
+          missing: '(подходящая аннотация не найдена)',
+        },
+        toast: {
+          attachFail: 'Не удалось собрать аннотации; сообщение уйдёт без них: ',
+          skipCommand: 'Это слэш-команда — аннотации остаются в очереди и уйдут со следующим сообщением',
+        },
+        // Разбор блока опирается на три вещи: заголовок начинается с BLOCK_HEADS.ru,
+        // разделитель вопроса — block.marker, префикс примечания — notePrefix.
+        // Формат ответа модели намеренно латинский («Annotation N: …»): по нему
+        // работает замена в ответе ассистента (decorateAnnotationLabels), и он не
+        // зависит от языка интерфейса.
+        block: {
+          head: 'Я аннотировал следующие фрагменты ({n} шт.) — номера соответствуют цитатам ниже; пожалуйста, ответьте на них, отвечая на мой вопрос:',
+          notePrefix: 'Примечание: ',
+          format: 'Ответьте на каждую аннотацию в формате «Annotation 1: …» — «Annotation {n}: …», затем ответьте на мой вопрос.',
+          headOnly: 'Я аннотировал следующие фрагменты — ответьте, пожалуйста, на каждую аннотацию:',
+          formatOnly: 'Ответьте на каждую аннотацию выше в формате «Annotation N: …».',
+          marker: 'Вопрос:',
+        },
+      },
     }
     var currentLang = 'zh'
     function setLang(id) {
-      // 本插件只有 zh / en 两套文案，但 DSH 的 locale 服务不止这两种：узел
-      // может выбрать ru. 之前这里把 zh/en 之外的一切都当成 zh，于是选了俄语的
-      // 节点整套批注界面退回中文（замечено 2026-09-19 на neural）。英文是两套
-      // 文案里对俄语节点可读的那一套 —— 未知语言一律走它。
-      currentLang = id === 'zh' ? 'zh' : 'en'
+      // 文案有 zh / en / ru 三套，DSH 的 locale 服务可能有更多（fr、de…）。
+      // 已知语言原样采用；未知语言走英文 —— 曾经这里把一切非 zh/en 都当成 zh，
+      // 选了俄语的节点整套批注界面退回中文。
+      currentLang = (id === 'zh' || id === 'en' || id === 'ru') ? id : 'en'
     }
     function dictVal(lang, key) {
       var cur = STR[lang]
@@ -270,23 +317,41 @@ window.__ModuleLoader__.load({
       }
       return s
     }
-    // 批注块头部哨兵（zh/en 都识别；兼容历史消息与跨语言切换）。
-    var BLOCK_HEADS = { zh: '我批注了以下', en: 'I annotated the following' }
-    function hasAnnotationBlock(text) {
-      return text.indexOf(BLOCK_HEADS.zh) !== -1 || text.indexOf(BLOCK_HEADS.en) !== -1
+    /** Числовая форма из словаря: «одна|две|много» через «|»; без «|» — как есть.
+     *  Нужна для русского: «1 аннотация», «3 аннотации», «5 аннотаций». */
+    function plural(key, n) {
+      var forms = String(t(key)).split('|')
+      if (forms.length < 3) return forms[0]
+      var mod10 = n % 10
+      var mod100 = n % 100
+      var index = (mod10 === 1 && mod100 !== 11) ? 0
+        : (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) ? 1 : 2
+      return forms[index] !== undefined ? forms[index] : forms[0]
     }
-    // 气泡隐藏手术的分隔标记：当前语言优先，另保留另一语言与「问题：」老格式。
+    // 批注块头部哨兵（zh/en/ru 都识别；兼容历史消息与跨语言切换）。
+    var BLOCK_HEADS = { zh: '我批注了以下', en: 'I annotated the following', ru: 'Я аннотировал следующие' }
+    function hasAnnotationBlock(text) {
+      for (var lang in BLOCK_HEADS) {
+        if (Object.prototype.hasOwnProperty.call(BLOCK_HEADS, lang) && text.indexOf(BLOCK_HEADS[lang]) !== -1) return true
+      }
+      return false
+    }
+    // 气泡隐藏手术的分隔标记：当前语言优先，另保留其他语言与「问题：」老格式。
     var BLOCK_MARKERS = {
       zh: ['\n提问：', '提问：', '\n问题：', '问题：'],
       en: ['\nAsk:', 'Ask:'],
+      ru: ['\nВопрос:', 'Вопрос:'],
     }
     function blockMarkers() {
-      return currentLang === 'en'
-        ? BLOCK_MARKERS.en.concat(BLOCK_MARKERS.zh)
-        : BLOCK_MARKERS.zh.concat(BLOCK_MARKERS.en)
+      var langs = [currentLang]
+      var known = Object.keys(BLOCK_MARKERS)
+      for (var k = 0; k < known.length; k++) if (langs.indexOf(known[k]) === -1) langs.push(known[k])
+      var out = []
+      for (var i = 0; i < langs.length; i++) out = out.concat(BLOCK_MARKERS[langs[i]])
+      return out
     }
     // 反解析用的段落级分隔标记（批注块按协议生成，均以 \n\n 开头）。
-    var PARSE_MARKERS = ['\n\n提问：', '\n\n问题：', '\n\nAsk:']
+    var PARSE_MARKERS = ['\n\n提问：', '\n\n问题：', '\n\nAsk:', '\n\nВопрос:']
 
     // ============================== 工具 ==============================
     // 助手行判别：0810 snapshot 起助手消息行 = ChatNodeSeat 上的
@@ -1669,7 +1734,7 @@ window.__ModuleLoader__.load({
         b.style.cssText = 'color:var(--dsw-alias-text-accent,#4c9aff);font-weight:700;'
         b.textContent = String(ui.quotes.length)
         chipLayer.appendChild(b)
-        chipLayer.appendChild(document.createTextNode(t('chip.count')))
+        chipLayer.appendChild(document.createTextNode(plural('chip.count', ui.quotes.length)))
         var card = document.querySelector('[data-composer-card]')
         if (card !== observedComposer) {
           if (composerObserver !== null) composerObserver.disconnect()
@@ -1834,7 +1899,8 @@ window.__ModuleLoader__.load({
             full += n.nodeValue || ''
           }
           // 纯批注用完整首尾文案识别，避免原文中的「提问：」被误当成正文分隔符。
-          var annotationOnly = ['zh', 'en'].some(function (lang) {
+          // 语言列表取自词典本身：多一种语言（ru）就自动多一条识别路径。
+          var annotationOnly = Object.keys(STR).some(function (lang) {
             return full.indexOf(dictVal(lang, 'block.headOnly')) === 0
               && full.trimEnd().endsWith(dictVal(lang, 'block.formatOnly'))
           })
@@ -1902,7 +1968,7 @@ window.__ModuleLoader__.load({
             if (mm === null) continue
             var item = mm[2]
             var note = ''
-            var nm = /\n\s*(?:批注：|Note:)\s*([\s\S]*)$/.exec(item)
+            var nm = /\n\s*(?:批注：|Note:|Примечание:)\s*([\s\S]*)$/.exec(item)
             if (nm !== null) { note = nm[1].trim(); item = item.slice(0, nm.index) }
             out.push({ text: item.replace(/\n   /g, '\n').trim(), note: note })
           }
