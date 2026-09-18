@@ -241,7 +241,11 @@ window.__ModuleLoader__.load({
     }
     var currentLang = 'zh'
     function setLang(id) {
-      currentLang = (id === 'en' || id === 'zh') ? id : 'zh'
+      // 本插件只有 zh / en 两套文案，但 DSH 的 locale 服务不止这两种：узел
+      // может выбрать ru. 之前这里把 zh/en 之外的一切都当成 zh，于是选了俄语的
+      // 节点整套批注界面退回中文（замечено 2026-09-19 на neural）。英文是两套
+      // 文案里对俄语节点可读的那一套 —— 未知语言一律走它。
+      currentLang = id === 'zh' ? 'zh' : 'en'
     }
     function dictVal(lang, key) {
       var cur = STR[lang]

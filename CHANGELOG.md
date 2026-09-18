@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### 兼容性
+- **第三种界面语言不再把批注界面退回中文**：本插件只有 zh / en 两套文案，而 DSH 的 locale 服务不止这两种。节点选定 `ru`（或任何 zh/en 之外的语言）时，`setLang` 以前把一切非 zh/en 都当成 zh，于是整套批注 UI —— 工具条、编辑窗口、提示、批注协议块 —— 全变成中文。现在只有 `zh` 保留中文，其余一律英文；`test/locale-fallback.test.mjs` 固定这条规则（ru / ru-RU / fr / de / zh-Hans 全部走英文）。
 - **恢复 DSH 0.1.1（textarea 输入区）上的 Enter 批注拼稿**：1.4.6 适配 0.1.2 的 `div[data-composer-input]` 输入区时，移除了 Enter keydown 门控里的 textarea 分支，旧核心上 Enter 不再拼入批注块（发送按钮路径不受影响，但 Enter 发送会静默丢弃待发送批注）。门控现并行接受 `div[data-composer-input]` 与 textarea 两条分支；0.1.1-rc.2 实测恢复，div 分支行为不变。
 
 ## [1.4.10] - 2026-09-11
