@@ -198,9 +198,19 @@ test('输入框挖洞（issue #50）保持原样，两个洞互不影响', () =>
 })
 
 test('没有会话滚动容器（data 属性与 scrollBody 启发式都落空）时，标记层退回只挖输入框', () => {
-  const expected = 'polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, '
+  const expected = 'polygon(evenodd, 0 0, 1000px 0, 1000px 800px, 0 800px, 0 0, '
     + '120px 600px, 820px 600px, 820px 700px, 120px 700px, 120px 600px)'
   assert.equal(runRenderMarkers(null, null), expected)
+})
+
+test('零尺寸标记壳层的裁剪外框使用视口像素，缩放后重新计算（issue #81）', () => {
+  const viewport = { innerWidth: 1000, innerHeight: 800 }
+  const clip = Function('window', `return (${tryExtractFunction('clipWithHoles')})`)(viewport)
+  assert.equal(clip([]), 'polygon(evenodd, 0 0, 1000px 0, 1000px 800px, 0 800px, 0 0)')
+  viewport.innerWidth = 700
+  viewport.innerHeight = 650
+  assert.equal(clip([]), 'polygon(evenodd, 0 0, 700px 0, 700px 650px, 0 650px, 0 0)')
+  assert.doesNotMatch(clip([COMPOSER]), /%/, '百分比会按零尺寸壳层计算，导致正文标记不可见')
 })
 
 test('data 属性缺失但 scrollBody 可见时，会话列退回类名启发式（不依赖单一宿主钩子）', () => {

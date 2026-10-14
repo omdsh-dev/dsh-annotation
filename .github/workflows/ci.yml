@@ -72,6 +72,7 @@ jobs:
           BASELINE_CLIENT=/tmp/annotation-1.4.10-client.js node test/header-scroll-browser.mjs
           node test/panel-background-browser.mjs
           node test/overlay-browser.mjs
+          node test/window-drag-browser.mjs
           node test/pending-chip-browser.mjs
           node test/sidebar-browser.mjs
         env:
