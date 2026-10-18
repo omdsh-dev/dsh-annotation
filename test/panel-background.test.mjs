@@ -11,8 +11,8 @@ test('annotation surfaces use solid theme layers without menu alpha (issue #69)'
     const rule = source.slice(source.indexOf(selector), source.indexOf(" }',", source.indexOf(selector)))
     assert.ok(rule.includes(`background: ${background};`), selector)
   }
-  assert.equal(source.split(`background:${background};`).length - 1, 7,
-    'toast, pending chip, bubble/reply chips and their floating panels share the solid surface')
+  assert.equal(source.split(`background:${background};`).length - 1, 8,
+    'toast, pending chip, bubble/reply chips, queue tag and their floating panels share the solid surface')
   assert.doesNotMatch(source, /background:.*!important/,
     'readability must not depend on a hover-only background override')
 })

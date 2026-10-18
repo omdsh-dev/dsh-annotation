@@ -78,6 +78,18 @@ window.__ModuleLoader__.load({
         '.dsh-ann-ghost:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }',
         '.dsh-ann-ghost:disabled { opacity: .45; cursor: default; }',
         '.dsh-ann-ghost svg { width: 14px; height: 14px; }',
+        '.dsh-ann-unanswered { display: flex; align-items: center; gap: 10px; margin-top: 10px;',
+        '  padding: 8px 10px; border-radius: 8px; width: fit-content; max-width: 100%;',
+        '  border: 1px solid var(--dsw-alias-state-warning-primary, #f5a623);',
+        '  background: var(--dsw-alias-bg-layer-1);',
+        '  color: var(--dsw-alias-label-secondary); font-family: var(--dsw-font-family, system-ui);',
+        '  font-size: 12px; line-height: 18px; }',
+        '.dsh-ann-nudge { flex: none; height: 24px; padding: 0 10px; border-radius: 12px;',
+        '  border: 1px solid var(--dsw-alias-border-inverted);',
+        '  background: var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-base, #2c2c2e));',
+        '  color: var(--dsw-alias-text-accent, #4c9aff); font-family: inherit; font-size: 12px;',
+        '  cursor: pointer; }',
+        '.dsh-ann-nudge:hover { background: var(--dsw-alias-interactive-bg-hover); }',
         '.dsh-ann-action { display: inline-flex; align-items: center; gap: 5px; height: 28px;',
         '  padding: 0 12px; border: none; border-radius: 14px;',
         '  background: var(--dsw-alias-button-primary-fill);',
@@ -145,14 +157,14 @@ window.__ModuleLoader__.load({
         '.dsh-ann-error { color: var(--dsw-alias-state-error-primary, #ff7a7a);',
         '  font-size: 12px; margin-top: 8px; word-break: break-word; }',
         '.dsh-ann-hl { position: fixed; z-index: 900; background: rgba(255, 195, 0, .15);',
-        '  border-radius: 2px; pointer-events: none; animation: dsh-ann-fadein .15s ease; }',
+        '  border-radius: 2px; pointer-events: none; visibility: visible; }',
         '.dsh-ann-num { position: fixed; z-index: 940; display: inline-flex; align-items: center;',
         '  justify-content: center; min-width: 16px; height: 16px; padding: 0 4px;',
         '  border-radius: 8px; border: 1px solid rgba(255, 255, 255, .3);',
         '  background: var(--dsw-alias-text-accent, #4c9aff); color: #fff;',
         '  font-family: var(--dsw-font-family, system-ui); font-size: 10px; font-weight: 700;',
         '  box-shadow: 0 1px 4px rgba(0,0,0,.35); pointer-events: auto; cursor: pointer;',
-        '  transition: filter .12s ease; }',
+        '  transition: filter .12s ease; visibility: visible; }',
         '.dsh-ann-num:hover { filter: brightness(1.15); }',
         'body:has([role="dialog"][aria-modal="true"]) [data-annotation-overlay],',
         'body:has([role="dialog"][aria-modal="true"]) [data-annotation-num-layer] { display: none; }',
@@ -191,6 +203,9 @@ window.__ModuleLoader__.load({
         reply: {
           headWithQuote: '批注 {n} 的原文',
           notePrefix: '你的批注：',
+          unanswered: '还有 {n} 条批注未按编号回应：第 {list} 条',
+          nudge: '追问',
+          nudgePrompt: '你在上一条回复中没有按编号回应这些批注：第 {list} 条。请用「Annotation N：…」的格式逐条补充回答，不要重复已经回答过的内容。',
         },
         toast: {
           attachFail: '批注拼稿失败，消息将不带批注发送：',
@@ -200,9 +215,9 @@ window.__ModuleLoader__.load({
         block: {
           head: '我批注了以下 {n} 处内容（编号与原文对应），请针对它们回答我的问题：',
           notePrefix: '批注：',
-          format: '请用「Annotation 1：…」到「Annotation {n}：…」的格式，逐条回应上面每一条批注，最后再回答我的问题。',
+          format: '请用「Annotation 1：…」到「Annotation {n}：…」的格式，逐条单独回应上面每一条批注，不要合并或跳过；即使某条无法回应，也要保留编号说明原因。最后再回答我的问题。',
           headOnly: '我批注了以下内容，请逐条回应：',
-          formatOnly: '请按「Annotation N：…」的格式，逐条回应以上批注。',
+          formatOnly: '请按「Annotation N：…」的格式，逐条单独回应以上批注，保留编号，不要合并或跳过。',
           marker: '提问：',
         },
       },
@@ -228,6 +243,9 @@ window.__ModuleLoader__.load({
         reply: {
           headWithQuote: 'Source of annotation {n}',
           notePrefix: 'Your note: ',
+          unanswered: '{n} annotation(s) were not answered by number: {list}',
+          nudge: 'Ask again',
+          nudgePrompt: 'Your previous reply did not answer these annotations by number: {list}. Please answer each of them in the "Annotation N: …" format, without repeating what you already covered.',
         },
         toast: {
           attachFail: 'Failed to attach annotations; the message will be sent without them: ',
@@ -237,9 +255,9 @@ window.__ModuleLoader__.load({
         block: {
           head: 'I annotated the following {n} passage(s) (the numbers match the quotes below); please respond to them when answering my question:',
           notePrefix: 'Note: ',
-          format: 'Please respond to each annotation in the format "Annotation 1: …" through "Annotation {n}: …", then answer my question.',
+          format: 'Respond to each annotation individually in the format "Annotation 1: …" through "Annotation {n}: …". Do not merge or skip any; if you cannot address one, keep its number and say why. Then answer my question.',
           headOnly: 'I annotated the following passages; please respond to each annotation:',
-          formatOnly: 'Please respond to each annotation above in the format "Annotation N: …".',
+          formatOnly: 'Respond to each annotation above individually in the format "Annotation N: …", keeping the numbers, without merging or skipping any.',
           marker: 'Ask:',
         },
       },
@@ -268,6 +286,9 @@ window.__ModuleLoader__.load({
           headNoQuote: 'Аннотация {n}',
           notePrefix: 'Ваше примечание: ',
           missing: '(подходящая аннотация не найдена)',
+          unanswered: 'Не отвечено по номерам: {n} (аннотации {list})',
+          nudge: 'Уточнить',
+          nudgePrompt: 'В предыдущем ответе не были отвечены по номерам эти аннотации: {list}. Ответьте на каждую в формате «Annotation N: …», не повторяя уже сказанное.',
         },
         toast: {
           attachFail: 'Не удалось собрать аннотации; сообщение уйдёт без них: ',
@@ -281,9 +302,9 @@ window.__ModuleLoader__.load({
         block: {
           head: 'Я аннотировал следующие фрагменты ({n} шт.) — номера соответствуют цитатам ниже; пожалуйста, ответьте на них, отвечая на мой вопрос:',
           notePrefix: 'Примечание: ',
-          format: 'Ответьте на каждую аннотацию в формате «Annotation 1: …» — «Annotation {n}: …», затем ответьте на мой вопрос.',
+          format: 'Ответьте на каждую аннотацию отдельно в формате «Annotation 1: …» — «Annotation {n}: …». Не объединяйте и не пропускайте ни одну; если на какую-то ответить нельзя, сохраните её номер и объясните почему. Затем ответьте на мой вопрос.',
           headOnly: 'Я аннотировал следующие фрагменты — ответьте, пожалуйста, на каждую аннотацию:',
-          formatOnly: 'Ответьте на каждую аннотацию выше в формате «Annotation N: …».',
+          formatOnly: 'Ответьте на каждую аннотацию выше отдельно в формате «Annotation N: …», сохраняя номера, без объединения и пропусков.',
           marker: 'Вопрос:',
         },
       },
@@ -1054,7 +1075,10 @@ window.__ModuleLoader__.load({
       document.body.appendChild(host)
       var overlay = document.createElement('div')
       overlay.setAttribute('data-annotation-overlay', '')
-      overlay.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:900;'
+      // #81：没有标记时不要把全屏 fixed 层留在 DOM 里。Electron 的无边框
+      // 窗口按层做 drag 命中测试，空的 inset:0 层即使 pointer-events:none
+      // 也可能盖住标题栏的 -webkit-app-region: drag，导致窗口拖不动。
+      overlay.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:900;display:none;visibility:hidden;'
       document.body.appendChild(overlay)
 
       // 编号单独成层：overlay 是 z-index 900 的 stacking context，编号挂在里面
@@ -1064,8 +1088,16 @@ window.__ModuleLoader__.load({
       // 参与标记层的裁剪。
       var numLayer = document.createElement('div')
       numLayer.setAttribute('data-annotation-num-layer', '')
-      numLayer.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:1100;'
+      numLayer.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:1100;display:none;visibility:hidden;'
       document.body.appendChild(numLayer)
+
+      // #82：高亮节点复用池。滚动时矩形每帧都变，旧实现整层销毁重建，
+      // 既制造 DOM churn 又让入场动画每帧重播；复用后只改 left/top/size。
+      var hlNodes = []
+      var visibleHl = 0
+      // #82 后续：编号也复用，避免每帧销毁重建蓝色数字与点击监听。
+      var numNodes = []
+      var visibleNum = 0
 
       var ui = {
         mode: 'closed',      // closed | actions | editing | composing
@@ -1265,11 +1297,15 @@ window.__ModuleLoader__.load({
       var lostSince = 0
       var ANCHOR_LOST_MS = 1000
       function onLayoutChange() {
+        // #82：滚动事件必须在本帧 paint 前把 fixed 高亮挪到新位置。以前这里
+        // 统一丢给 rAF，Chromium 的 scroll 事件晚于该帧 rAF 阶段，paint 会用
+        // 上一帧坐标（实测一帧最多差 ~90px）。标记重算放在 rAF 之前同步做，
+        // 其余 UI 定位仍然走 rAF 合并。
+        if (ui.quotes.length > 0) renderMarkers()
         if (anchorRaf) return
         anchorRaf = true
         requestAnimationFrame(function () {
           anchorRaf = false
-          if (ui.quotes.length > 0) renderMarkers()
           updateChip()
           if (ui.mode === 'editing' && ui.el !== null) positionEditor(ui.el, ui.pos.left, ui.pos.top)
           if (ui.mode !== 'actions' || ui.quote === '') return
@@ -1335,8 +1371,28 @@ window.__ModuleLoader__.load({
         // 每行子树查询 + textContent，成本随会话长度线性增长）会在长会话上白白
         // 烧主线程；漏网场景由下方 1s 兜底轮询覆盖。
         var hasRowInsert = false
+        var hasAnnotationInsert = false
         for (var i = 0; i < mutations.length; i++) {
-          if (mutations[i].type === 'childList') { hasRowInsert = true; break }
+          var mut = mutations[i]
+          if (mut.type !== 'childList') continue
+          hasRowInsert = true
+          for (var a = 0; a < mut.addedNodes.length; a++) {
+            var node = mut.addedNodes[a]
+            if (node.nodeType === 1 && hasAnnotationBlock(node.textContent || '')) {
+              hasAnnotationInsert = true
+              break
+            }
+          }
+          if (hasAnnotationInsert) break
+        }
+        if (hasAnnotationInsert) {
+          // 新插入的节点本身就带批注块（插队 pending echo / 排队预览）：
+          // 必须在本帧绘制前同步收掉，否则会先闪一下整段原文。这里是
+          // MutationObserver 微任务，早于 paint；不走 120ms 合并窗口。
+          if (decorateAllPending !== null) { clearTimeout(decorateAllPending); decorateAllPending = null }
+          lastDecorateAllAt = performance.now()
+          decorateAll()
+          return
         }
         if (hasRowInsert) {
           scheduleDecorateAll()
@@ -1381,7 +1437,10 @@ window.__ModuleLoader__.load({
               return
             }
             var attached = attachAndSend(e)
-            if (attached && (e.ctrlKey || e.metaKey)) {
+            if (attached) {
+              // 自己提交，不再把同一次 Enter 交给宿主：宿主的 keymap 可能读到
+              // setDraft 之前的旧草稿（表现为「卡回车」），也可能在批注块已经
+              // 拼入后再走一次 steer（表现为重复发送 / 打断上一轮）。
               e.preventDefault()
               e.stopPropagation()
               submitAttached()
@@ -1393,7 +1452,17 @@ window.__ModuleLoader__.load({
       // 提交）——否则等我们执行时消息已提交，拼稿永远太迟。
       document.addEventListener('keydown', onKeyDown, true)
 
+      // 同一次发送可能同时来自 keydown、pointerdown 与 click（宿主按钮的
+      // disabled 状态会变），用短锁把提交折叠成一次；400ms 足够覆盖一次物理
+      // 手势，又不会挡住用户随后的第二次主动发送。
+      var lastSubmitAt = 0
+
       function submitAttached() {
+        var now = Date.now()
+        if (now - lastSubmitAt < 400) {
+          console.log('[annotation] 忽略 400ms 内的重复提交')
+          return
+        }
         var current = readCurrentSessionId()
         if (current === undefined) {
           console.warn('[annotation] 无法确定当前会话，批注直接提交已跳过')
@@ -1404,6 +1473,7 @@ window.__ModuleLoader__.load({
           console.warn('[annotation] 当前会话 scope 不可用，批注直接提交已跳过')
           return
         }
+        lastSubmitAt = now
         try {
           ctx.conversation.input.for(scoped).submit('queue')
         } catch (err) {
@@ -1683,14 +1753,18 @@ window.__ModuleLoader__.load({
         return r.width > 0 && r.height > 0 ? [r] : []
       }
 
-      /** 外框保留、逐个矩形挖空（evenodd）：标记层的裁剪路径。 */
-      function clipWithHoles(rects) {
+      /** 外框保留、逐个矩形挖空（evenodd）：标记层的裁剪路径。
+       *  `offsetY` 是标记层自身的 top；holes 是视口坐标，换算到层内坐标。 */
+      function clipWithHoles(rects, offsetY) {
+        var oy = offsetY || 0
         var d = 'polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0'
         for (var i = 0; i < rects.length; i++) {
           var r = rects[i]
-          d += ', ' + r.left + 'px ' + r.top + 'px, ' + r.right + 'px ' + r.top + 'px, '
-            + r.right + 'px ' + r.bottom + 'px, ' + r.left + 'px ' + r.bottom + 'px, '
-            + r.left + 'px ' + r.top + 'px'
+          var top = r.top - oy
+          var bottom = r.bottom - oy
+          d += ', ' + r.left + 'px ' + top + 'px, ' + r.right + 'px ' + top + 'px, '
+            + r.right + 'px ' + bottom + 'px, ' + r.left + 'px ' + bottom + 'px, '
+            + r.left + 'px ' + top + 'px'
         }
         return d + ')'
       }
@@ -1706,14 +1780,25 @@ window.__ModuleLoader__.load({
 
         if (sig !== markersSig) {
           markersSig = sig
-          overlay.textContent = ''
-          numLayer.textContent = ''
+          // 高亮/编号都复用节点池，只改位置与文案。
           buildMarkers()
         }
+        // #81：空层直接 display:none，别让全屏 fixed 层留在 Electron 的
+        // drag 命中测试里；有可见高亮/编号时才挂回去。
+        overlay.style.display = visibleHl > 0 ? '' : 'none'
+        numLayer.style.display = visibleNum > 0 ? '' : 'none'
       }
 
       function buildMarkers() {
-        if (ui.quotes.length === 0) return
+        var hlCursor = 0
+        var numCursor = 0
+        if (ui.quotes.length === 0) {
+          for (var h0 = 0; h0 < hlNodes.length; h0++) hlNodes[h0].style.display = 'none'
+          for (var n0 = 0; n0 < numNodes.length; n0++) numNodes[n0].style.display = 'none'
+          visibleHl = 0
+          visibleNum = 0
+          return
+        }
         var placed = []
         for (var i = 0; i < ui.quotes.length; i++) {
           var q = ui.quotes[i]
@@ -1723,13 +1808,19 @@ window.__ModuleLoader__.load({
           for (var c = 0; c < rects.length; c++) {
             var rect = rects[c]
             if (rect.width === 0 || rect.height === 0) continue
-            var hl = document.createElement('div')
-            hl.className = 'dsh-ann-hl'
+            var hl = hlNodes[hlCursor]
+            if (hl === undefined) {
+              hl = document.createElement('div')
+              hl.className = 'dsh-ann-hl'
+              hlNodes.push(hl)
+              overlay.appendChild(hl)
+            }
+            hlCursor++
+            hl.style.display = ''
             hl.style.left = rect.left + 'px'
             hl.style.top = rect.top + 'px'
             hl.style.width = rect.width + 'px'
             hl.style.height = rect.height + 'px'
-            overlay.appendChild(hl)
           }
           var anchor = null
           for (var k = 0; k < rects.length; k++) {
@@ -1770,9 +1861,22 @@ window.__ModuleLoader__.load({
               if (chipTop + 18 > bk.top && chipTop < bk.bottom) skipChip = true
             }
             if (!skipChip) {
-              var chip = document.createElement('div')
-              chip.className = 'dsh-ann-num'
+              var chip = numNodes[numCursor]
+              if (chip === undefined) {
+                chip = document.createElement('div')
+                chip.className = 'dsh-ann-num'
+                chip.addEventListener('click', function (ev) {
+                  ev.stopPropagation()
+                  var item = this.__annotationItem
+                  if (item !== undefined) openEditorFor(item)
+                })
+                numNodes.push(chip)
+                numLayer.appendChild(chip)
+              }
+              numCursor++
+              chip.__annotationItem = q
               chip.textContent = String(i + 1)
+              chip.style.display = ''
               var tries = 0
               while (tries < 12) {
                 var clash = false
@@ -1791,16 +1895,13 @@ window.__ModuleLoader__.load({
               placed.push({ left: chipLeft, top: chipTop })
               chip.style.left = chipLeft + 'px'
               chip.style.top = chipTop + 'px'
-              ;(function (q) {
-                chip.addEventListener('click', function (ev) {
-                  ev.stopPropagation()
-                  openEditorFor(q)
-                })
-              })(q)
-              numLayer.appendChild(chip)
             }
           }
         }
+        for (var hx = hlCursor; hx < hlNodes.length; hx++) hlNodes[hx].style.display = 'none'
+        for (var nx = numCursor; nx < numNodes.length; nx++) numNodes[nx].style.display = 'none'
+        visibleHl = hlCursor
+        visibleNum = numCursor
       }
 
       // ---------- 动作 ----------
@@ -2368,8 +2469,8 @@ window.__ModuleLoader__.load({
        *  返回是否成功（内容未渲染完时返回 false，轮询稍后重试）。 */
       function hideAnnotationBlock(row) {
         try {
-          var bubble = row.querySelector('[class*="bubble"]')
-          if (bubble === null) return false
+          // steering / 插队消息不一定有 bubble class，退回整行文本。
+          var bubble = row.querySelector('[class*="bubble"]') || row
           var nodes = []
           var full = ''
           var walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT)
@@ -2431,8 +2532,8 @@ window.__ModuleLoader__.load({
       /** 从气泡文本反解析批注条目（用于刷新后旧消息的 hover 内容）。 */
       function parseItemsFromBubble(row) {
         try {
-          var b = row.querySelector('[class*="bubble"]')
-          var text = (b ? b.textContent : '') || ''
+          var b = row.querySelector('[class*="bubble"]') || row
+          var text = b.textContent || ''
           var mi = -1
           for (var mk = 0; mk < PARSE_MARKERS.length; mk++) {
             var pmi = text.lastIndexOf(PARSE_MARKERS[mk])
@@ -2535,11 +2636,19 @@ window.__ModuleLoader__.load({
         var rows = allMessageRows()
         var idx = rows.indexOf(row)
         if (idx === -1) return null
+        // 只认「紧邻的上一条用户/插队消息」：不能一路往前找最近一个带标签
+        // 的消息，否则普通消息后的回复会误继承上上一条消息的批注，报出
+        // 「还有 N 条批注未回应」的假警报。遇到第一条用户行就停。
         for (var i = idx - 1; i >= 0; i--) {
-          var tag = rows[i].querySelector('[data-annotation-bubble-tag]')
-          if (tag !== null && Array.isArray(tag.__annotationItems) && tag.__annotationItems.length > 0) {
-            return tag.__annotationItems
-          }
+          var r = rows[i]
+          var kind = typeof r.getAttribute === 'function' ? r.getAttribute('data-chat-flow-kind') : null
+          var isUser = kind === 'user' || kind === 'steering'
+            || (typeof r.querySelector === 'function' && r.querySelector('[class*="bubble"]') !== null)
+          if (!isUser) continue
+          var tag = r.querySelector('[data-annotation-bubble-tag]')
+          return tag !== null && Array.isArray(tag.__annotationItems) && tag.__annotationItems.length > 0
+            ? tag.__annotationItems
+            : null
         }
         return null
       }
@@ -2581,6 +2690,7 @@ window.__ModuleLoader__.load({
           // 一个 hover 只显示「未找到对应批注条目」的占位芯片没有任何价值。
           if (items === null || items.length === 0) continue
           decorateAnnotationLabels(el, items)
+          markUnansweredAnnotations(el, items)
         }
       }
 
@@ -2635,11 +2745,81 @@ window.__ModuleLoader__.load({
         }
       }
 
+      /** 1..count 里没有出现在 covered 中的编号（纯函数，便于单测）。 */
+      function missingIndexes(count, covered) {
+        var out = []
+        for (var i = 1; i <= count; i++) {
+          if (covered.indexOf(i) === -1) out.push(i)
+        }
+        return out
+      }
+
+      function listSeparator() {
+        return currentLang === 'zh' ? '、' : ', '
+      }
+
+      /** 只在最新一条助手回复上提示「未按编号回应」的批注，并给一个追问按钮。
+       *  不自动发送：按钮只把追问写进 composer，发不发仍由用户决定。 */
+      function markUnansweredAnnotations(row, items) {
+        if (row.querySelector('[data-annotation-unanswered]') !== null) return
+        var rows = assistantRows()
+        if (rows.length === 0 || rows[rows.length - 1] !== row) return
+        var covered = []
+        var chips = row.querySelectorAll('[data-annotation-reply-chip]')
+        for (var i = 0; i < chips.length; i++) {
+          var idx = parseInt(chips[i].getAttribute('data-annotation-index'), 10)
+          if (!isNaN(idx)) covered.push(idx)
+        }
+        var missing = missingIndexes(items.length, covered)
+        if (missing.length === 0) return
+        var box = document.createElement('div')
+        box.setAttribute('data-annotation-unanswered', '')
+        box.className = 'dsh-ann-unanswered'
+        var label = document.createElement('span')
+        label.textContent = t('reply.unanswered', { n: missing.length, list: missing.join(listSeparator()) })
+        box.appendChild(label)
+        var btn = document.createElement('button')
+        btn.type = 'button'
+        btn.className = 'dsh-ann-nudge'
+        btn.textContent = t('reply.nudge')
+        btn.addEventListener('click', function () { nudgeUnanswered(missing) })
+        box.appendChild(btn)
+        row.appendChild(box)
+      }
+
+      /** 追问里的批注清单：中文用纯编号（配「第 {list} 条」读起来自然），
+       *  其余语言用 Annotation N 标签。 */
+      function nudgeList(missing) {
+        var labels = missing.map(function (n) {
+          return currentLang === 'zh' ? String(n) : 'Annotation ' + n
+        })
+        return labels.join(listSeparator())
+      }
+
+      /** 把「补答未回应批注」的追问写进 composer（不自动发送）。 */
+      function nudgeUnanswered(missing) {
+        var current = readCurrentSessionId()
+        if (current === undefined) { showToast(t('toast.noSession')); return }
+        try {
+          var scoped = sessions.scope(current)
+          if (scoped === undefined) { showToast(t('toast.noSession')); return }
+          var shell = ctx.conversation.input.for(scoped)
+          var draft = (shell.state.getSnapshot().draft || '').trim()
+          var list = nudgeList(missing)
+          var prompt = t('reply.nudgePrompt', { list: list })
+          shell.setDraft(draft === '' ? prompt : draft + '\n\n' + prompt)
+          focusComposer()
+        } catch (err) {
+          console.warn('[annotation] 追问草稿写入失败：', err)
+        }
+      }
+
       /** 构造「Annotation N」芯片（hover 显示该批注的原文与批注内容）。
        *  `item` 必定存在：调用方只在编号能对应到批注条目时才生成芯片。 */
       function makeReplyChip(num, item) {
         var chip = document.createElement('span')
         chip.setAttribute('data-annotation-reply-chip', '')
+        chip.setAttribute('data-annotation-index', String(num))
         chip.style.cssText = 'display:inline-flex;align-items:center;height:18px;padding:0 6px;margin:0 2px;border-radius:9px;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-base, #2c2c2e));color:var(--dsw-alias-text-accent,#4c9aff);font-family:var(--dsw-font-family,system-ui);font-size:11px;font-weight:600;cursor:default;vertical-align:middle;'
         chip.textContent = 'Annotation ' + num
         var grace = null
@@ -2689,6 +2869,54 @@ window.__ModuleLoader__.load({
         return chip
       }
 
+      /** 从排队预览的草稿原文里拆出 { count, question }。纯函数，便于单测。 */
+      function queuePreviewFromText(text) {
+        var markers = blockMarkers()
+        var mi = -1
+        var ms = ''
+        for (var p = 0; p < markers.length; p++) {
+          var idx = text.lastIndexOf(markers[p])
+          if (idx > mi) { mi = idx; ms = markers[p] }
+        }
+        var body = mi >= 0 ? text.slice(0, mi) : text
+        var count = 0
+        var expected = 1
+        // 队列预览会把换行折叠成空格，所以不能只认行首编号；只接受从 1
+        // 开始连续递增的编号，避免把原文里的「3.」误算成条目。
+        var re = /(?:^|\s)(\d+)\.\s+/g
+        var m
+        while ((m = re.exec(body)) !== null) {
+          if (parseInt(m[1], 10) === expected) { count++; expected++ }
+        }
+        return {
+          count: count === 0 ? 1 : count,
+          question: mi >= 0 ? text.slice(mi + ms.length).replace(/^\s+/, '') : '',
+        }
+      }
+
+      /** 排队 dock 里宿主持有的是草稿原文；把批注块收成「批注 ×N」标签，
+       *  只留提问。宿主重渲染会把预览写回原文，所以由 decorateAll 的
+       *  MutationObserver / 轮询反复兜底（幂等，带 tag 就跳过）。 */
+      function decorateQueueDock() {
+        var dock = document.querySelector('[data-queue-dock]')
+        if (dock === null) return
+        var previews = dock.querySelectorAll('[class*="_preview"]')
+        for (var i = 0; i < previews.length; i++) {
+          var preview = previews[i]
+          if (preview.querySelector('[data-annotation-queue-tag]') !== null) continue
+          var text = preview.textContent || ''
+          if (!hasAnnotationBlock(text)) continue
+          var parsed = queuePreviewFromText(text)
+          var count = parsed.count
+          preview.textContent = parsed.question
+          var tag = document.createElement('span')
+          tag.setAttribute('data-annotation-queue-tag', '')
+          tag.textContent = t('bubble.tag', { n: count })
+          tag.style.cssText = 'display:inline-flex;align-items:center;height:18px;padding:0 8px;margin-left:6px;border-radius:9px;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-base, #2c2c2e));color:var(--dsw-alias-label-secondary);font-family:var(--dsw-font-family,system-ui);font-size:10px;'
+          preview.appendChild(tag)
+        }
+      }
+
       /** 全局轮询装饰：找所有「携带批注块但未装饰」的用户气泡 → 隐藏批注块 + 贴标签。
        *  不依赖发送事件链：异步渲染、刷新后的历史消息都能被覆盖。 */
       function decorateAll() {
@@ -2697,9 +2925,11 @@ window.__ModuleLoader__.load({
           for (var i = rows.length - 1; i >= 0; i--) {
             var el = rows[i]
             if (el.hasAttribute('data-pending-steering')) continue
+            if (isAssistantRow(el) || isFocusAssistantRow(el)) continue
             if (el.querySelector('[data-annotation-bubble-tag]') !== null) continue
-            var b = el.querySelector('[class*="bubble"]')
-            if (b === null || !hasAnnotationBlock(b.textContent || '')) continue
+            // steering / 插队消息不一定有 bubble class，退回整行文本。
+            var b = el.querySelector('[class*="bubble"]') || el
+            if (!hasAnnotationBlock(b.textContent || '')) continue
             // 最新一条优先消费发送时暂存的数据；其余从气泡文本反解析（须在隐藏前）。
             var items = null
             var fromSend = false
@@ -2713,6 +2943,21 @@ window.__ModuleLoader__.load({
             // 清空刚恢复的待发送批注（issue #28 复测）。发送清空的唯一权威是
             // watchInputDraft 的「草稿有→空」迁移，其初始化时序洞由订阅重试补齐。
           }
+          // 插队/steering 的本地 pending echo 自带 data-pending-steering，
+          // 主循环会跳过它；单独扫一遍，否则插队瞬间整段批注块会露出来。
+          var pending = document.querySelectorAll('[data-pending-steering]')
+          for (var pi = 0; pi < pending.length; pi++) {
+            var pe = pending[pi]
+            if (isAssistantRow(pe) || isFocusAssistantRow(pe)) continue
+            if (pe.querySelector('[data-annotation-bubble-tag]') !== null) continue
+            var pb = pe.querySelector('[class*="bubble"]') || pe
+            if (!hasAnnotationBlock(pb.textContent || '')) continue
+            var pitems = parseItemsFromBubble(pe)
+            if (!hideAnnotationBlock(pe)) continue
+            attachBubbleTag(pe, pitems)
+          }
+          // 排队 dock 的预览也藏着完整批注块；先收成标签，再处理气泡。
+          decorateQueueDock()
           // 助手回复：把「Annotation N：」变为可悬浮的批注芯片（内容取自最近一条带批注的用户消息）。
           decorateAssistantAnnotations()
         } catch (err) {
