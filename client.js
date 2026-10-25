@@ -838,7 +838,8 @@ window.__ModuleLoader__.load({
           if (score > bestScore) { bestScore = score; best = range }
         }
       }
-      if (best !== null && (ctx === null || bestScore > 0)) return best
+      var noCtx = ctx === null || (saved.ctxBefore === '' && saved.ctxAfter === '')
+      if (best !== null && (noCtx || bestScore > 0)) return best
       var flow = document.querySelector('[data-chat-flow]')
       if (flow === null) flow = document.querySelector('[data-focus-flow]')
       if (flow !== null) {
