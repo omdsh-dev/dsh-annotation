@@ -2222,12 +2222,38 @@ window.__ModuleLoader__.load({
       function releaseActiveTip() {
         tipActiveHide = null
       }
-      chipLayer.addEventListener('mouseenter', function () {
+      function chipTipOpen() { return tipOwner === chipLayer }
+      function closeChipTip() {
+        cancelHide()
+        releaseActiveTip()
+        clearTip(chipLayer)
+      }
+      function openChipTip() {
         cancelHide()
         showChipTip()
         tipActiveHide = { keep: cancelHide, hide: function () { scheduleHide(chipLayer) } }
+      }
+      function onChipTipPointerDown(event) {
+        if (!chipTipOpen()) return
+        var target = event.target
+        if (chipLayer.contains(target) || tipLayer.contains(target)) return
+        closeChipTip()
+      }
+      chipLayer.addEventListener('pointerenter', function (event) {
+        if (event.pointerType !== 'mouse') return
+        if (!chipTipOpen()) openChipTip()
       })
-      chipLayer.addEventListener('mouseleave', function () { scheduleHide(chipLayer) })
+      chipLayer.addEventListener('pointerleave', function (event) {
+        if (event.pointerType !== 'mouse') return
+        scheduleHide(chipLayer)
+      })
+      // 点击胶囊切换面板：触屏没有 hover，鼠标点击也能关闭 hover 打开的面板。
+      chipLayer.addEventListener('click', function (event) {
+        event.stopPropagation()
+        if (chipTipOpen()) closeChipTip()
+        else openChipTip()
+      })
+      document.addEventListener('pointerdown', onChipTipPointerDown, true)
 
       function showChipTip() {
         if (ui.quotes.length === 0) return
@@ -2853,6 +2879,7 @@ window.__ModuleLoader__.load({
         if (decoTimer !== null) { clearInterval(decoTimer); decoTimer = null }
         if (decorateAllPending !== null) { clearTimeout(decorateAllPending); decorateAllPending = null }
         if (composerObserver !== null) composerObserver.disconnect()
+        document.removeEventListener('pointerdown', onChipTipPointerDown, true)
         chipLayer.remove()
         tipLayer.remove()
         host.remove()
