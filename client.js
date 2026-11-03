@@ -354,6 +354,80 @@ window.__ModuleLoader__.load({
     // 反解析用的段落级分隔标记（批注块按协议生成，均以 \n\n 开头）。
     var PARSE_MARKERS = ['\n\n提问：', '\n\n问题：', '\n\nAsk:', '\n\nВопрос:']
 
+    function templateCount(text, template) {
+      var parts = String(template).split('{n}')
+      if (parts.length !== 2 || text.indexOf(parts[0]) !== 0) return null
+      var rest = text.slice(parts[0].length)
+      var match = /^\d+/.exec(rest)
+      if (match === null || rest.slice(match[0].length).indexOf(parts[1]) !== 0) return null
+      var count = parseInt(match[0], 10)
+      if (!Number.isSafeInteger(count) || count < 1) return null
+      return { count: count, end: parts[0].length + match[0].length + parts[1].length }
+    }
+
+    function annotationItemCount(text) {
+      var parts = text.split('\n\n')
+      if (parts.length === 0) return 0
+      for (var i = 0; i < parts.length; i++) {
+        if (parts[i].indexOf((i + 1) + '. ') !== 0) return 0
+      }
+      return parts.length
+    }
+
+    /** 只识别 buildBlock() 生成的完整批注消息，不改写普通用户文字。 */
+    function storedAnnotationMessage(text) {
+      if (typeof text !== 'string' || text === '') return null
+      var langs = Object.keys(STR)
+      for (var i = 0; i < langs.length; i++) {
+        var lang = langs[i]
+        var header = templateCount(text, dictVal(lang, 'block.head'))
+        if (header !== null) {
+          var format = dictVal(lang, 'block.format').split('{n}').join(String(header.count))
+          var ending = '\n\n' + format + '\n\n' + dictVal(lang, 'block.marker') + '\n'
+          var at = text.lastIndexOf(ending)
+          if (at >= header.end + 2 && annotationItemCount(text.slice(header.end + 2, at)) === header.count) {
+            return { count: header.count, question: text.slice(at + ending.length).replace(/^\s+/, '') }
+          }
+        }
+        var start = dictVal(lang, 'block.headOnly') + '\n\n'
+        var tail = '\n\n' + dictVal(lang, 'block.formatOnly')
+        if (text.indexOf(start) === 0 && text.endsWith(tail)) {
+          var count = annotationItemCount(text.slice(start.length, text.length - tail.length))
+          if (count > 0) return { count: count, question: '' }
+        }
+      }
+      return null
+    }
+
+    function annotationLabelPattern() {
+      return /Annotation[\s\u200b\u200c\u200d\u00ad]*(\d+)[\s\u200b\u200c\u200d\u00ad]*[:：]?/gi
+    }
+
+    function visibleAnnotationLabels(text, count) {
+      return text.replace(annotationLabelPattern(), function (whole, rawNumber) {
+        var number = parseInt(rawNumber, 10)
+        return Number.isSafeInteger(number) && number >= 1 && number <= count ? 'Annotation ' + number : whole
+      })
+    }
+
+    function annotationSearchProjection() {
+      var latestAnnotationCount = 0
+      return function (source) {
+        if (source.kind === 'user' && source.sourceKind === 'user') {
+          var parsed = storedAnnotationMessage(source.raw)
+          latestAnnotationCount = parsed === null ? 0 : parsed.count
+          if (parsed !== null) return { storedRaw: source.raw, raw: parsed.question }
+          return null
+        }
+        if (latestAnnotationCount > 0 && source.format === 'markdown'
+          && (source.kind === 'assistant' || source.kind === 'reasoning')) {
+          var visible = visibleAnnotationLabels(source.raw, latestAnnotationCount)
+          if (visible !== source.raw) return { storedRaw: source.raw, raw: visible }
+        }
+        return null
+      }
+    }
+
     // ============================== 工具 ==============================
     // 助手行判别：0810 snapshot 起助手消息行 = ChatNodeSeat 上的
     // data-chat-flow-kind="assistant-step"（旧版 data-time-hover-root 已不再
@@ -973,6 +1047,16 @@ window.__ModuleLoader__.load({
     // ============================== 插件主体 ==============================
     function apply(ctx) {
       var sessions = ctx.sessions
+
+      // find-all 是可选插件。安装时，把保存记录转换成用户最终看到的文字；
+      // 未安装时不会改变批注插件原有行为，也不会增加包依赖。
+      if (typeof ctx.inject === 'function') ctx.inject(['ryuu.findAllSearchContent'], function (searchCtx) {
+        var searchContent = searchCtx.get('ryuu.findAllSearchContent')
+        if (searchContent === undefined || typeof searchContent.register !== 'function') return
+        searchCtx.effect(function () {
+          return searchContent.register('@changfenhuang/dsh-annotation', annotationSearchProjection)
+        })
+      })
 
       // ---------- 当前会话 id 的跨版本解析（覆盖 DSH 0.1.1 ~ 0.2.0-rc.2）----------
       // 优先级（自上而下，命中即返回）：
@@ -2462,6 +2546,7 @@ window.__ModuleLoader__.load({
         var bubble = row.querySelector('[class*="bubble"]') || row
         var tag = document.createElement('span')
         tag.setAttribute('data-annotation-bubble-tag', '')
+        tag.setAttribute('data-find-projection-chrome', '')
         tag.textContent = t('bubble.tag', { n: items.length })
         tag.style.cssText = 'display:inline-flex;align-items:center;height:18px;padding:0 8px;margin:4px 0 0 4px;border-radius:9px;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-base, #2c2c2e));color:var(--dsw-alias-label-secondary);font-family:var(--dsw-font-family,system-ui);font-size:10px;cursor:default;'
         ;(function (list) {
@@ -2586,7 +2671,7 @@ window.__ModuleLoader__.load({
 
       /** 在行内所有文本节点中找「Annotation N：」（不区分大小写），替换为芯片。 */
       function decorateAnnotationLabels(row, items) {
-        var re = /Annotation[\s\u200b\u200c\u200d\u00ad]*(\d+)[\s\u200b\u200c\u200d\u00ad]*[:：]?/gi
+        var re = annotationLabelPattern()
         // 先快照所有文本节点，再逐个处理：遍历中途修改树会让 TreeWalker
         // 指针失效（处理完第一个节点后遍历就断了）——这是「只有第一个
         // Annotation 变成芯片」的根因。

@@ -30,7 +30,15 @@ function harness(lang, draft, sourcePath, sessionsOverride, storageOverride) {
     function showToast() {}
     ${['uiSessionFace', 'currentSessionSource', 'readCurrentSessionId'].map(fn).join('\n')}
     ${['buildBlock', 'shouldAttachForEnter', 'isCommandDraft', 'attachAndSend', 'hideAnnotationBlock', 'parseItemsFromBubble'].map(fn).join('\n')}
-    return { setLang, attachAndSend, hideAnnotationBlock, parseItemsFromBubble }
+    return {
+      setLang,
+      attachAndSend,
+      hideAnnotationBlock,
+      parseItemsFromBubble,
+      storedAnnotationMessage,
+      visibleAnnotationLabels,
+      annotationSearchProjection,
+    }
   `)(shell, document, { SHOW_TEXT: 4 }, sourcePath, sessions, storageOverride)
   api.setLang(lang)
   return { api, row, bubble, shell, render(value) {
@@ -91,6 +99,60 @@ for (const lang of ['zh', 'en']) {
     assert.equal(h.api.hideAnnotationBlock(h.row), true)
   })
 }
+
+test('完整批注消息只把用户真正输入的问题交给搜索', () => {
+  const h = harness('zh', '这是用户真正输入的问题')
+  assert.equal(h.api.attachAndSend({}), true)
+  const stored = h.shell.state.getSnapshot().draft
+  assert.deepEqual(h.api.storedAnnotationMessage(stored), {
+    count: 1,
+    question: '这是用户真正输入的问题',
+  })
+})
+
+test('纯批注消息不会把自动生成的协议文字交给搜索', () => {
+  const h = harness('zh', '')
+  assert.equal(h.api.attachAndSend({}), true)
+  const stored = h.shell.state.getSnapshot().draft
+  assert.deepEqual(h.api.storedAnnotationMessage(stored), { count: 1, question: '' })
+})
+
+test('看起来相似的普通用户文字不会被误删', () => {
+  const h = harness('zh', '')
+  assert.equal(h.api.storedAnnotationMessage('我批注了以下内容，但这只是普通文字。'), null)
+})
+
+test('助手记录里的批注标题与页面芯片文字保持一致', () => {
+  const h = harness('zh', '')
+  assert.equal(
+    h.api.visibleAnnotationLabels('Annotation 1：第一条\nAnnotation 2: 第二条\nAnnotation 3：保留', 2),
+    'Annotation 1第一条\nAnnotation 2 第二条\nAnnotation 3：保留',
+  )
+})
+
+test('普通用户消息会结束上一轮批注标题的搜索转换', () => {
+  const h = harness('zh', '这是用户真正输入的问题')
+  assert.equal(h.api.attachAndSend({}), true)
+  const project = h.api.annotationSearchProjection()
+  const annotated = h.shell.state.getSnapshot().draft
+  assert.deepEqual(project({ kind: 'user', sourceKind: 'user', raw: annotated }), {
+    storedRaw: annotated,
+    raw: '这是用户真正输入的问题',
+  })
+  assert.deepEqual(project({ kind: 'assistant', format: 'markdown', raw: 'Annotation 1：回答' }), {
+    storedRaw: 'Annotation 1：回答',
+    raw: 'Annotation 1回答',
+  })
+  assert.equal(project({ kind: 'user', sourceKind: 'user', raw: '下一条普通消息' }), null)
+  assert.equal(project({ kind: 'assistant', format: 'markdown', raw: 'Annotation 1：普通正文' }), null)
+})
+
+test('搜索兼容保持可选，并使用上游包名登记', () => {
+  assert.match(source, /ctx\.inject\(\['ryuu\.findAllSearchContent'\]/)
+  assert.match(source, /searchContent\.register\('@changfenhuang\/dsh-annotation'/)
+  assert.doesNotMatch(source, /searchContent\.register\('@ryuu-64\/dsh-annotation'/)
+  assert.match(source, /data-find-projection-chrome/)
+})
 
 // issue #64：DSH 0.1.6-alpha.2 移除了 sessions.list.current。已发布宿主上
 // `sessions.currentProvideInfo` 并不存在（上游契约已无此成员），真实可用路径是
