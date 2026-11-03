@@ -1054,7 +1054,10 @@ window.__ModuleLoader__.load({
       document.body.appendChild(host)
       var overlay = document.createElement('div')
       overlay.setAttribute('data-annotation-overlay', '')
-      overlay.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:900;'
+      // macOS 宿主把 body > :not(#root) 设为 no-drag；即使 pointer-events:none，
+      // 全屏盒子也会抵消窗口拖拽区。壳层只保留 stacking context，fixed 子元素
+      // 仍用视口坐标绘制；clipWithHoles 也必须用视口像素，不能用零尺寸壳层的百分比。
+      overlay.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;overflow:visible;pointer-events:none;z-index:900;'
       document.body.appendChild(overlay)
 
       // 编号单独成层：overlay 是 z-index 900 的 stacking context，编号挂在里面
@@ -1064,7 +1067,7 @@ window.__ModuleLoader__.load({
       // 参与标记层的裁剪。
       var numLayer = document.createElement('div')
       numLayer.setAttribute('data-annotation-num-layer', '')
-      numLayer.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:1100;'
+      numLayer.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;overflow:visible;pointer-events:none;z-index:1100;'
       document.body.appendChild(numLayer)
 
       var ui = {
@@ -1685,7 +1688,9 @@ window.__ModuleLoader__.load({
 
       /** 外框保留、逐个矩形挖空（evenodd）：标记层的裁剪路径。 */
       function clipWithHoles(rects) {
-        var d = 'polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0'
+        var w = window.innerWidth + 'px'
+        var h = window.innerHeight + 'px'
+        var d = 'polygon(evenodd, 0 0, ' + w + ' 0, ' + w + ' ' + h + ', 0 ' + h + ', 0 0'
         for (var i = 0; i < rects.length; i++) {
           var r = rects[i]
           d += ', ' + r.left + 'px ' + r.top + 'px, ' + r.right + 'px ' + r.top + 'px, '
