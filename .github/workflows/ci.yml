@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+# Superseded PR commits can stop; main and manual runs keep unique groups.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check:
     strategy:
@@ -31,7 +36,6 @@ jobs:
         run: pnpm run check
 
   smoke:
-    needs: check
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -88,7 +92,6 @@ jobs:
           DSH_BIN: ${{ github.workspace }}/../../.dsh/source/current/apps/cli/lib/bin.js
 
   enter:
-    needs: check
     strategy:
       fail-fast: false
       matrix:

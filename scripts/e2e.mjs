@@ -108,8 +108,23 @@ try {
   if (!state.mounted) fail('Annotation bundle 已加载，但页面没有挂载批注入口')
   if (pageErrors.length > 0) fail(`页面异常: ${pageErrors.slice(0, 3).join(' | ')}`)
 
+  // DSH 0.2.0 offers "稍后配置"; newer keyless hosts dismiss the
+  // credentials dialog with Escape. Closing it is scoped to the page session.
+  async function dismissCredentials(required = false) {
+    if (LIVE) return
+    const later = page.getByRole('button', { name: '稍后配置', exact: true })
+    const login = page.getByRole('button', { name: '登录', exact: true })
+    if (required) await later.or(login).first().waitFor({ state: 'visible', timeout: 15000 })
+    if (await later.isVisible()) {
+      await later.click()
+      await later.waitFor({ state: 'hidden' })
+    } else if (await login.isVisible()) {
+      await page.keyboard.press('Escape')
+      await login.waitFor({ state: 'hidden' })
+    }
+  }
   await page.getByRole('button', { name: '继续', exact: true }).click()
-  if (!LIVE) await page.getByRole('button', { name: '稍后配置', exact: true }).click()
+  await dismissCredentials(true)
   if (process.argv.includes('--sidebar')) {
     // A real persisted session is required: the unsent draft has no conversation header.
     const result = await page.evaluate(async workspaceId => {
@@ -157,12 +172,13 @@ try {
   if (pageErrors.length > 0) throw new Error(`交互异常: ${pageErrors.join(' | ')}`)
   console.log('PASS 真实宿主选区、保存和刷新恢复')
   if (process.argv.includes('--sidebar')) {
-    const later = page.getByRole('button', { name: '稍后配置', exact: true })
-    if (await later.isVisible()) await later.click()
+    await dismissCredentials()
     async function openFile() {
+      await dismissCredentials()
       // Reload can leave the session list focused; the right sidebar belongs to the open session.
       const session = page.getByText('文件批注验收', { exact: true }).first()
       if (await session.isVisible()) await session.click()
+      await dismissCredentials()
       const expand = page.locator('[data-sidebar-right-expand]')
       const opened = page.locator('[data-sidebar-right-open]')
       // The header control mounts after the session view. A collapsed panel stays
@@ -195,7 +211,7 @@ try {
     await page.locator('.dsh-ann-action').click()
     await page.reload({ waitUntil: 'domcontentloaded' })
     await page.locator('[data-annotation-chip]').waitFor({ state: 'visible' })
-    if (await later.isVisible()) await later.click()
+    await dismissCredentials()
     // The host closes sidebar tabs on reload; reopen the same file through its UI.
     await openFile()
     await page.locator('.dsh-ann-num').waitFor({ state: 'visible' })
