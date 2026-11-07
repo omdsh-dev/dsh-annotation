@@ -1335,8 +1335,28 @@ window.__ModuleLoader__.load({
         // 每行子树查询 + textContent，成本随会话长度线性增长）会在长会话上白白
         // 烧主线程；漏网场景由下方 1s 兜底轮询覆盖。
         var hasRowInsert = false
+        var hasAnnotationInsert = false
         for (var i = 0; i < mutations.length; i++) {
-          if (mutations[i].type === 'childList') { hasRowInsert = true; break }
+          var mut = mutations[i]
+          if (mut.type !== 'childList') continue
+          hasRowInsert = true
+          for (var a = 0; a < mut.addedNodes.length; a++) {
+            var node = mut.addedNodes[a]
+            if (node.nodeType === 1 && hasAnnotationBlock(node.textContent || '')) {
+              hasAnnotationInsert = true
+              break
+            }
+          }
+          if (hasAnnotationInsert) break
+        }
+        if (hasAnnotationInsert) {
+          // 新插入的节点本身就带批注块（普通发送回显 / 插队 pending echo）：
+          // 必须在本帧绘制前同步收掉，否则会先闪一下整段原文。这里是
+          // MutationObserver 微任务，早于 paint；不走 120ms 合并窗口。
+          if (decorateAllPending !== null) { clearTimeout(decorateAllPending); decorateAllPending = null }
+          lastDecorateAllAt = performance.now()
+          decorateAll()
+          return
         }
         if (hasRowInsert) {
           scheduleDecorateAll()
@@ -2712,6 +2732,22 @@ window.__ModuleLoader__.load({
             // 切换/刷新后重新渲染的历史消息」，历史消息重装饰曾被误判为已发送而
             // 清空刚恢复的待发送批注（issue #28 复测）。发送清空的唯一权威是
             // watchInputDraft 的「草稿有→空」迁移，其初始化时序洞由订阅重试补齐。
+          }
+          // 本地发送回显（普通 data-submission-echo + 插队 data-pending-steering）
+          // 不在 allMessageRows 里：普通回显以前完全没被扫描，发送瞬间会先露出
+          // 整段批注块，等持久消息渲染后才被切掉。这里在同一个 MutationObserver
+          // 微任务里收掉，早于 paint。
+          var echoes = document.querySelectorAll('[data-submission-echo], [data-pending-steering]')
+          for (var ei = 0; ei < echoes.length; ei++) {
+            var echo = echoes[ei]
+            if (isAssistantRow(echo) || isFocusAssistantRow(echo)) continue
+            if (echo.querySelector('[data-annotation-bubble-tag]') !== null) continue
+            var eb = echo.querySelector('[class*="bubble"]') || echo
+            if (!hasAnnotationBlock(eb.textContent || '')) continue
+            var eitems = parseItemsFromBubble(echo)
+            if (eitems.length === 0) continue
+            if (!hideAnnotationBlock(echo)) continue
+            attachBubbleTag(echo, eitems)
           }
           // 助手回复：把「Annotation N：」变为可悬浮的批注芯片（内容取自最近一条带批注的用户消息）。
           decorateAssistantAnnotations()
