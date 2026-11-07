@@ -166,13 +166,13 @@ function runRenderMarkers (viewRect, scrollBodyRect) {
   const overlay = { style: {}, textContent: '' }
   const numLayer = { style: {}, textContent: '' }
   const prelude = ['hostLocalRects', 'conversationColumnRange', 'hostHeaderRects', 'hostComposerRects', 'clipWithHoles']
-    .map(tryExtractFunction).filter((text) => text !== null).join('\n')
+    .map(tryExtractFunction).filter((text) => text !== null).join('\n') + '\nfunction markerLayerTop() { return 0 }\n'
   const run = Function(
-    'document', 'window', 'overlay', 'numLayer', 'markersSignature', 'markersSig', 'buildMarkers',
+    'document', 'window', 'overlay', 'numLayer', 'markersSignature', 'markersSig', 'buildMarkers', 'visibleHl', 'visibleNum', 'layerTop',
     `${prelude}\n${tryExtractFunction('renderMarkers')}\nreturn renderMarkers`,
   )
   run(makeDom(viewRect, scrollBodyRect), { innerWidth: 1000, innerHeight: 800 },
-    overlay, numLayer, () => 'same', 'same', () => {})()
+    overlay, numLayer, () => 'same', 'same', () => {}, 0, 0, 0)()
   return overlay.style.clipPath
 }
 
