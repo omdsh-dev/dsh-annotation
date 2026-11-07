@@ -74,7 +74,7 @@ function bench(options = {}) {
   }
 }
 
-test('post-composition Enter retains the draft until the 50ms guard expires', () => {
+test('post-composition Enter attaches and submits once after the 50ms guard expires', () => {
   const b = bench()
   b.start(); b.end(); b.advance(20)
   const guarded = b.event()
@@ -86,9 +86,9 @@ test('post-composition Enter retains the draft until the 50ms guard expires', ()
   const next = b.event()
   b.key(next)
   assert.equal(b.calls.attach, 1)
-  assert.equal(b.calls.submit, 0, 'plain Enter keeps host Queue/Steer resolution')
-  assert.equal(next.stopped, 0)
-  assert.equal(next.prevented, 0)
+  assert.equal(b.calls.submit, 1, 'plain Enter submits the assembled draft directly')
+  assert.equal(next.stopped, 1)
+  assert.equal(next.prevented, 1)
 })
 
 test('composition cancellation keeps the same post-composition protection', () => {
