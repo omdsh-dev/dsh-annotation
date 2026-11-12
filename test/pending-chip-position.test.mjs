@@ -55,15 +55,23 @@ function setup({ seat = element(SEAT, { 'data-composer-seat': '' }), card = unde
     createTextNode: text => ({ textContent: text }),
   }
   const window = { innerWidth: width, innerHeight: height }
-  const update = Function('ui', 'document', 'window', 'chipLayer', 'clearTip', 'plural', 'composerObserver', `
+  // updateChip 现在依赖拆分出来的 syncChipContent（内容签名缓存）、hideChip（归属
+  // 清理）以及 composerCardEl（元素引用缓存）。这里求值真实实现，只注入测试
+  // 作用域：composerCardEl 指向可替换的 currentCard，内容缓存/几何缓存声明为
+  // 块级变量（与 client.js 中同形），clearTip/plural/observer 仍由测试记录。
+  const update = Function('ui', 'document', 'window', 'chipLayer', 'clearTip', 'plural', 'composerObserver', 'composerCardEl', `
     var observedComposer = null
+    var chipContentSig = null
+    var chipGeom = { left: null, top: null, w: 0, h: 0 }
     ${functionSource('composerSeatOf')}
+    ${functionSource('syncChipContent')}
     ${functionSource('updateChip')}
+    ${functionSource('hideChip')}
     return updateChip
   `)(ui, document, window, chipLayer, owner => cleared.push(owner), () => ' annotations', {
     disconnect: () => { disconnects++ },
     observe: el => observed.push(el),
-  })
+  }, () => currentCard)
   return {
     ui, chipLayer, seat, window, update, observed, cleared,
     disconnects: () => disconnects,

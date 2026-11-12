@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.4.12] - 2026-11-10
+
+### 修复
+- **批注一多，滚动正文就卡、高亮块与编号图标跟不上（慢半拍）**：旧实现把标记层做成了「滚动帧 = 全量重建帧」——`markersSignature` 把每条批注每帧的 rect 拼进签名（滚动 1px 就变），签名一变就 `overlay.textContent = ''` + `numLayer.textContent = ''` 清空两层并重建全部高亮/编号；`buildMarkers` 还在每条批注的循环里重复调用 `hostLocalRects('scrollBody')` / `hostHeaderRects()` / `hostComposerRects()`，即每帧 `3N+2` 次全文档 `querySelectorAll`（属性子串选择器，长会话下每次 50–150µs）。批注一多，fixed 标记层由主线程逐帧写坐标的成本超过一帧预算，正文在合成线程继续滚动、标记只能滞后 1–3 帧——就是「跟不上、慢半拍」。现在：
+  - 标记元素池：每条批注的高亮块与编号元素只创建一次，滚动时只更新 `transform`（`translate`）与尺寸，不再每帧清空重建；编号的可见性判定 / 会话列下限 / 碰撞避让规则保持不变；
+  - 宿主几何缓存：`hostLocalEls` 按 CSS Modules local 名缓存元素引用，`conversationViewEl` / `composerCardEl` / `composerSeatOf` 同样缓存；只在 `childList` 变化（消息行增删、视图重建）与 1s 兜底轮询时失效，滚动不再触发全文档查询；
+  - 定位缓存：`locateQuoteCached` 复用上次定位的 Range（`rangeAlive` 校验节点仍在文档中、文本未变），滚动不再重复跑 `locateQuote` 的文本扫描；缓存命中前额外用 `sourceAlive` 校验文件批注仍属于当前预览源；
+  - `clipPath` 只在遮挡区（输入区 + 会话头部）几何变化时写；`updateChip` 拆成内容重建（条数/文案变化）与定位（rect 比较后写），尺寸只量一次，滚动不再每帧重建胶囊子节点、不再每帧读 `offsetWidth` 强制同步布局。
+- 修复定位缓存跳过来源文件校验的回归：文件预览切换时若宿主只改 `data-textpreview-url`（文本节点未重建），旧文件的标记会被继承到新文件；现在 `sourceAlive` 要求缓存 Range 仍落在 `sourceUrl` 相同且可见的预览容器内，否则重新定位、旧标记立即消失。
+
+### 性能
+- 合成基准（`test/marker-scroll-perf.mjs`：36 行会话、30~50 条批注、headless Chrome 156，滚动 120 帧；数字写入 `test/perf-baseline.json`）：
+
+| 指标（每滚动帧） | N=20 旧 → 新 | N=50 旧 → 新 |
+|---|---|---|
+| 插件 rAF 回调耗时 p95 | 3.1ms → 0.7ms | 7.7ms → 1.6ms |
+| 全文档 `querySelectorAll` 调用/帧 | 135.0 → 1.4 | 368.0 → 3.2 |
+| 标记层 DOM 重建节点/帧 | 22.3 → 0 | 55.8 → 0 |
+
+  N=5 同样从 rAF p95 1.1ms 降到 0.4ms、查询 34.9 次/帧降到 0.5 次/帧。旧实现每次重建的查询次数随批注数线性增长（≈3N+11 次/帧），真实宿主元素更多、文件批注与流式输出叠加时差距按同一比例放大；标记层每帧 DOM 重建归零后，滚动不再与主线程争用帧预算。
+
+### 工程
+- 新增 `test/marker-scroll.test.mjs`（9 条回归）：滚动复用同一批池元素且 transform 更新、`clipPath` 仅遮挡区变化时写、`locateQuote` 慢路径不重复执行、批注增删时池元素不泄漏、文件批注切文件不继承标记、缓存/元素池的源码结构守卫。
+- 浏览器测试适配元素池与 transform 定位语义（header-scroll / sidebar 改读渲染矩形与可见编号，行为断言未放宽）；Windows 下浏览器脚本改用 `fileURLToPath` 修复 `addScriptTag` 的 `F:\F:\` 路径拼接。
+- 新增 `test/marker-scroll-perf.mjs` 可复现滚动性能基准与 `docs/perf/annotation-scroll-audit.md` 热点审计（含宿主滚动机制与「慢半拍」时间线）。
+
 ## [1.4.11] - 2026-10-01
 
 ### 修复

@@ -165,14 +165,22 @@ function makeDom (viewRect, scrollBodyRect) {
 function runRenderMarkers (viewRect, scrollBodyRect) {
   const overlay = { style: {}, textContent: '' }
   const numLayer = { style: {}, textContent: '' }
-  const prelude = ['hostLocalRects', 'conversationColumnRange', 'hostHeaderRects', 'hostComposerRects', 'clipWithHoles']
-    .map(tryExtractFunction).filter((text) => text !== null).join('\n')
+  // renderMarkers 现在把宿主元素列表/会话列/输入卡片引用都缓存到函数静态属性上
+  // （hostLocalEls / conversationViewEl / composerCardEl），这些函数自包含，可单独
+  // 求值；hostLocalEls 缓存按 local 名存 querySelectorAll 结果，必须一并带进作用域。
+  const prelude = [
+    'hostLocalEls', 'hostLocalRects', 'conversationViewEl', 'composerCardEl',
+    'conversationColumnRange', 'hostHeaderRects', 'hostComposerRects', 'clipWithHoles',
+    'markersSignature',
+  ].map(tryExtractFunction).filter((text) => text !== null).join('\n')
+  // markersSig 从 null 起步：签名只描述遮挡区几何，首帧必须写 clipPath；
+  // 旧测试传 'same' 是为了骗过旧签名（旧签名不含遮挡区，首帧才总是写）。
   const run = Function(
-    'document', 'window', 'overlay', 'numLayer', 'markersSignature', 'markersSig', 'buildMarkers',
+    'document', 'window', 'overlay', 'numLayer', 'markersSig', 'markerHoles', 'buildMarkers',
     `${prelude}\n${tryExtractFunction('renderMarkers')}\nreturn renderMarkers`,
   )
   run(makeDom(viewRect, scrollBodyRect), { innerWidth: 1000, innerHeight: 800 },
-    overlay, numLayer, () => 'same', 'same', () => {})()
+    overlay, numLayer, null, null, () => {})()
   return overlay.style.clipPath
 }
 
@@ -214,7 +222,8 @@ test('data 属性缺失但 scrollBody 可见时，会话列退回类名启发式
 test('conversationColumnRange：data 属性优先，其缺失时退回 scrollBody 并集', () => {
   const run = (viewRect, scrollBodyRect) => Function(
     'document', 'window',
-    `${tryExtractFunction('hostLocalRects')}\nreturn (${tryExtractFunction('conversationColumnRange')})`,
+    `${tryExtractFunction('hostLocalEls')}\n${tryExtractFunction('hostLocalRects')}\n`
+      + `${tryExtractFunction('conversationViewEl')}\nreturn (${tryExtractFunction('conversationColumnRange')})`,
   )(makeDom(viewRect, scrollBodyRect), { innerHeight: 800 })()
   const col = run(VIEW, null)
   assert.deepEqual({ left: col.left, right: col.right, top: col.top }, { left: 12, right: 912, top: 76 })
