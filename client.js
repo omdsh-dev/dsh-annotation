@@ -160,6 +160,10 @@ window.__ModuleLoader__.load({
         'body:has([role="dialog"][aria-modal="true"]) [data-annotation-overlay],',
         'body:has([role="dialog"][aria-modal="true"]) [data-annotation-num-layer] { display: none; }',
         '.dsh-ann-tip { animation: dsh-ann-pop .12s var(--ds-ease-in-out, ease); }',
+        // 浮窗里的批注原文是「跳到正文该处」的入口：hover 加下划线（颜色沿用
+        // label-tertiary，不额外变色），光标提示可点击。
+        '.dsh-ann-tip-jump { cursor: pointer; }',
+        '.dsh-ann-tip-jump:hover { text-decoration: underline; text-underline-offset: 2px; }',
         // 可交互浮层始终使用不透明主题底色；菜单 token 在新版宿主可能带 alpha，
         // 默认状态、键盘聚焦和鼠标悬停都不能让正文穿透影响可读性。
         '@keyframes dsh-ann-fadein { from { opacity: 0; } to { opacity: 1; } }',
@@ -189,7 +193,7 @@ window.__ModuleLoader__.load({
         common: { cancel: '取消' },
         error: { noSelection: '没有选中的内容' },
         chip: { count: '条批注' },
-        tip: { title: '批注（{n} 条）', notePrefix: '批注：', del: '删' },
+        tip: { title: '批注（{n} 条）', notePrefix: '批注：', del: '删', jump: '跳转到目标内容' },
         bubble: { tag: '批注 ×{n}', title: '本消息携带批注（{n} 条）' },
         reply: {
           headWithQuote: '批注 {n} 的原文',
@@ -199,6 +203,7 @@ window.__ModuleLoader__.load({
           attachFail: '批注拼稿失败，消息将不带批注发送：',
           skipCommand: '本条是斜杠命令，未拼入批注；批注已保留，将随下一条消息发送',
           noSession: '无法确定当前会话，批注未拼入（已保留，将随下一条消息重试）',
+          jumpLost: '未找到该批注对应的原文（可能已被删除或不在当前视图）',
         },
         block: {
           head: '我批注了以下 {n} 处内容（编号与原文对应），请针对它们回答我的问题：',
@@ -226,7 +231,7 @@ window.__ModuleLoader__.load({
         common: { cancel: 'Cancel' },
         error: { noSelection: 'No text selected' },
         chip: { count: ' annotation(s)' },
-        tip: { title: 'Annotations ({n})', notePrefix: 'Note: ', del: 'Del' },
+        tip: { title: 'Annotations ({n})', notePrefix: 'Note: ', del: 'Del', jump: 'Jump to the annotated passage' },
         bubble: { tag: 'Annotations ×{n}', title: 'This message carries {n} annotation(s)' },
         reply: {
           headWithQuote: 'Source of annotation {n}',
@@ -236,6 +241,7 @@ window.__ModuleLoader__.load({
           attachFail: 'Failed to attach annotations; the message will be sent without them: ',
           skipCommand: 'Slash command detected — annotations stay pending and will attach to your next message',
           noSession: 'Cannot determine the current session; annotations kept pending and will retry with your next message',
+          jumpLost: 'Could not find the annotated passage (it may have been deleted or is not visible)',
         },
         block: {
           head: 'I annotated the following {n} passage(s) (the numbers match the quotes below); please respond to them when answering my question:',
@@ -264,7 +270,7 @@ window.__ModuleLoader__.load({
         // Три формы через «|» — их выбирает plural() по числу; у zh/en форма одна
         // (строка без «|»), поэтому их вывод не меняется.
         chip: { count: ' аннотация| аннотации| аннотаций' },
-        tip: { title: 'Аннотации ({n})', notePrefix: 'Примечание: ', del: 'Удал.' },
+        tip: { title: 'Аннотации ({n})', notePrefix: 'Примечание: ', del: 'Удал.', jump: 'Перейти к аннотированному фрагменту' },
         bubble: { tag: 'Аннотации ×{n}', title: 'В этом сообщении аннотаций: {n}' },
         reply: {
           headWithQuote: 'Источник аннотации {n}',
@@ -275,6 +281,7 @@ window.__ModuleLoader__.load({
         toast: {
           attachFail: 'Не удалось собрать аннотации; сообщение уйдёт без них: ',
           skipCommand: 'Это слэш-команда — аннотации остаются в очереди и уйдут со следующим сообщением',
+          jumpLost: 'Не удалось найти аннотированный фрагмент (возможно, он удалён или не отображается)',
         },
         // Разбор блока опирается на три вещи: заголовок начинается с BLOCK_HEADS.ru,
         // разделитель вопроса — block.marker, префикс примечания — notePrefix.
@@ -2017,6 +2024,91 @@ window.__ModuleLoader__.load({
       }
 
       // ---------- 动作 ----------
+      /** 从节点向上收集所有「纵向可滚动」的祖先（不含 body / documentElement）。 */
+      function scrollableAncestors(el) {
+        var out = []
+        for (var p = el; p !== null && p !== document.body && p !== document.documentElement; p = p.parentElement) {
+          var oy = getComputedStyle(p).overflowY
+          if (oy !== 'auto' && oy !== 'scroll' && oy !== 'overlay') continue
+          if (p.scrollHeight <= p.clientHeight + 1) continue
+          out.push(p)
+        }
+        return out
+      }
+
+      /** 把 rect 在单个滚动容器里垂直居中（带边界钳制），返回实际写入的滚动位移。 */
+      function centerRectInScroller(scroller, rect, shift, behavior) {
+        var box = scroller.getBoundingClientRect()
+        var target = scroller.scrollTop + rect.top - shift - box.top
+          - Math.max(0, (scroller.clientHeight - rect.height) / 2)
+        target = Math.max(0, Math.min(target, scroller.scrollHeight - scroller.clientHeight))
+        var delta = target - scroller.scrollTop
+        try { scroller.scrollTo({ top: target, behavior: behavior }) } catch (_) { scroller.scrollTop = target }
+        return delta
+      }
+
+      /** 把 Range 滚到视口中央（默认平滑；用户开启「减少动态效果」时瞬时）。
+       *  DSH 正文滚动体是 [data-conversation-scroll]，步骤过程体是
+       *  [data-step-process-body]，侧边栏文件预览另有自己的滚动容器；且这些
+       *  容器内部还可能嵌套滚动容器（长代码块、长表格的 overflow:auto）。
+       *  因此从 range 向上收集**每一层**纵向可滚动祖先，由内到外逐个居中：
+       *  只滚最内层的局部容器会让正文看起来「没动」（批注文字在代码块自己
+       *  的滚动区里），只滚最外层则看不到嵌在长代码块深处的原文。没有局部
+       *  滚动容器时才退回窗口滚动。range 由调用方定位，找不到也返回 false。 */
+      function scrollRangeIntoView(range) {
+        try {
+          var node = range.startContainer
+          var el = node instanceof Element ? node : (node !== null ? node.parentElement : null)
+          if (el === null) return false
+          var rect = range.getBoundingClientRect()
+          var behavior = 'smooth'
+          try {
+            if (typeof window.matchMedia === 'function'
+              && window.matchMedia('(prefers-reduced-motion: reduce)').matches) behavior = 'auto'
+          } catch (_) { /* 保持平滑 */ }
+          var scrollers = scrollableAncestors(el)
+          if (scrollers.length === 0) {
+            var winTop = (window.scrollY || 0) + rect.top
+              - Math.max(0, (window.innerHeight - rect.height) / 2)
+            try { window.scrollTo({ top: winTop, behavior: behavior }) } catch (_) { window.scrollTo(0, winTop) }
+            return true
+          }
+          // 由内到外逐层居中，但 rect 只在循环外读一次：内层容器滚动后，range
+          // 在视口中的位置会同步上移（smooth 动画期间重读也读不到最终位置），
+          // 后续外层必须用「原始 rect - 已滚量之和」计算，否则外层会把滚动前的
+          // 旧位置居中，偏差等于内滚总量（长代码块里可能把目标送出视口）。
+          // 已滚量用实际写入量累计（clamp 后的值），被内容边界截断时同样成立。
+          var shift = 0
+          for (var i = 0; i < scrollers.length; i++) {
+            shift += centerRectInScroller(scrollers[i], rect, shift, behavior)
+          }
+          return true
+        } catch (_) { return false }
+      }
+
+      /** 点击浮窗条目：把正文滚到该批注的原文处；原文已不可定位（或所在
+       *  容器无法滚动）时提示并保持面板。 */
+      function scrollToQuote(q) {
+        var range = locateQuoteCached(q)
+        if (range === null || !scrollRangeIntoView(range)) {
+          showToast(t('toast.jumpLost'))
+          return false
+        }
+        return true
+      }
+
+      /** 给浮窗里的批注原文（label tertiary）挂「跳转到目标内容」交互。
+       *  hover 下划线由 `.dsh-ann-tip-jump` 的 CSS 负责，title 是原生悬停提示
+       *  （与胶囊/角标的 title 约定一致，不额外占用共享 tipLayer）。 */
+      function enableQuoteJump(el, q) {
+        el.classList.add('dsh-ann-tip-jump')
+        el.title = t('tip.jump')
+        el.addEventListener('click', function (ev) {
+          ev.stopPropagation()
+          scrollToQuote(q)
+        })
+      }
+
       function captureAnchor(text) {
         var anchor = {
           range: null, seqKey: '', rowHead: '', textOffset: -1,
@@ -2512,6 +2604,8 @@ window.__ModuleLoader__.load({
           var body = document.createElement('span')
           body.style.cssText = 'font-size:11px;line-height:1.5;color:var(--dsw-alias-label-tertiary);'
           body.textContent = truncate(quoteWithSource(q), 100)
+          // 点原文 = 跳到正文里这条批注的位置（hover 下划线 + 原生 title 提示）。
+          enableQuoteJump(body, q)
           item.appendChild(num)
           item.appendChild(body)
           if (q.note !== undefined && q.note.trim() !== '') {
