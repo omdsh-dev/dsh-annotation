@@ -104,12 +104,15 @@ window.__ModuleLoader__.load({
         '.dsh-ann-card-title { font-size: 13px; font-weight: 600;',
         '  color: var(--dsw-alias-label-primary); }',
         '.dsh-ann-card-headmain { display: flex; align-items: center; gap: 2px; min-width: 0; }',
+        // 引用区只显示三行：overflow 的裁剪区是 padding box，底部内边距必须为 0，
+        // 否则第四行会从 padding-bottom 里露出一截；max-height 精确等于顶部内边距
+        // 6px + 三行行高 12×1.55×3 = 55.8px，即 61.8px。
         '.dsh-ann-quote { font-size: 12px; line-height: 1.55;',
         '  color: var(--dsw-alias-label-tertiary);',
         '  border-left: 2px solid var(--dsw-alias-border-inverted);',
         '  background: var(--dsw-alias-bg-layer-1);',
-        '  border-radius: 0 8px 8px 0; padding: 6px 10px; margin-bottom: 8px;',
-        '  max-height: 72px; overflow: hidden; word-break: break-word;',
+        '  border-radius: 0 8px 8px 0; padding: 6px 10px 0; margin-bottom: 8px;',
+        '  max-height: 61.8px; overflow: hidden; word-break: break-word;',
         '  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }',
         '.dsh-ann-quotes { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px;',
         '  max-height: 150px; overflow-y: auto; }',
@@ -1323,8 +1326,12 @@ window.__ModuleLoader__.load({
         }
         return false
       }
+      // 宿主 DOM 结构/文本变化的序号：批注定位失败后，只有 DOM 再变化（加载更早、
+      // 消息重渲染等）才值得重跑全量文本扫描；滚动本身不改 DOM，不该每帧重扫长会话。
+      var domMutationSeq = 0
       var observer = new MutationObserver(function (mutations) {
         if (!mutationRelevant(mutations)) return
+        domMutationSeq++
         // 结构变化（消息行插入/移除、视图重建）会让宿主几何缓存里的元素
         // 引用失效；characterData/attributes 批次不改变元素集合，不失效缓存，
         // 否则流式期间每个 token 都会把每帧查询重新做一遍。
@@ -1643,6 +1650,15 @@ window.__ModuleLoader__.load({
         return out
       }
 
+      /** 宿主「回到底部」按钮（会话滚动区右下方的 34px 圆形按钮，CSS Modules
+       *  local 名 `toBottom`，只在正文滚离底部时渲染）的可见矩形。待发送胶囊
+       *  就贴在同一水平带（输入卡片上方右侧），不避让会和它叠在一起。
+       *  宿主可能在按钮的显隐切换里复用元素（只改样式），故这里按「当前可见
+       *  矩形」判断，而不是缓存元素是否存在。 */
+      function toBottomRects() {
+        return hostLocalRects('toBottom')
+      }
+
       /** 会话滚动容器（data 属性跨版本稳定）与输入卡片的元素引用缓存。 */
       function conversationViewEl() {
         if (conversationViewEl.cache === undefined) {
@@ -1687,14 +1703,23 @@ window.__ModuleLoader__.load({
        *  一样被头部遮住。
        *  #63：只取会话列以内的部分。顶栏横带在侧边栏上方同样延伸，若整幅
        *  裁掉会把侧边栏文件批注一并裁掉；且类名启发式（_<header>）也会误中
-       *  侧边栏自己的头——故逐个矩形与会话列求交，完全在列外的直接丢弃。 */
+       *  侧边栏自己的头——故逐个矩形与会话列求交，完全在列外的直接丢弃。
+       *  只认「正文滚动容器之外」的宿主头部：消息内容里的代码块工具栏同样叫
+       *  `*_header`，却随正文滚动移动——把它当遮挡区会让裁剪路径每帧变化
+       *  （高亮滚动到边界时闪一下再消失），还会误裁正文里的标记。 */
       function hostHeaderRects() {
         var col = conversationColumnRange()
-        var rects = hostLocalRects('header')
         if (col === null) return []
+        var scrollBody = conversationViewEl()
+        var els = hostLocalEls('header')
         var out = []
-        for (var i = 0; i < rects.length; i++) {
-          var r = rects[i]
+        for (var i = 0; i < els.length; i++) {
+          var el = els[i]
+          if (scrollBody !== null && typeof scrollBody.contains === 'function'
+            && scrollBody.contains(el)) continue
+          var r = el.getBoundingClientRect()
+          if (r.width <= 0 || r.height <= 0) continue
+          if (r.bottom <= 0 || r.top >= window.innerHeight) continue
           var left = Math.max(r.left, col.left)
           var right = Math.min(r.right, col.right)
           if (right - left <= 0) continue
@@ -1718,14 +1743,23 @@ window.__ModuleLoader__.load({
         return r.width > 0 && r.height > 0 ? [r] : []
       }
 
-      /** 外框保留、逐个矩形挖空（evenodd）：标记层的裁剪路径。 */
+      /** 外框保留、逐个矩形挖空（evenodd）：标记层的裁剪路径。
+       *
+       *  每个洞都必须从视口上沿「桥接」下来、绕洞一周后再沿原路返回：
+       *  `polygon()` 只有一个轮廓，多个洞直接首尾相接时，洞与洞之间的连接线
+       *  （常常是斜线/竖线，位置随滚动与代码块 header 移动）会额外贡献射线
+       *  交点，使 evenodd 环绕数在洞外区域变成偶数——表现为「原文还在视口里，
+       *  但编号/高亮有时被整块裁掉」。去程与回程两条重合的桥线在 evenodd 下
+       *  相互抵消，只留下洞本身的一次环绕，判定就稳定了。 */
       function clipWithHoles(rects) {
         var d = 'polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0'
         for (var i = 0; i < rects.length; i++) {
           var r = rects[i]
-          d += ', ' + r.left + 'px ' + r.top + 'px, ' + r.right + 'px ' + r.top + 'px, '
-            + r.right + 'px ' + r.bottom + 'px, ' + r.left + 'px ' + r.bottom + 'px, '
-            + r.left + 'px ' + r.top + 'px'
+          var top = Math.max(0, r.top)
+          d += ', ' + r.left + 'px 0px, ' + r.left + 'px ' + top + 'px'
+            + ', ' + r.right + 'px ' + top + 'px, ' + r.right + 'px ' + r.bottom + 'px'
+            + ', ' + r.left + 'px ' + r.bottom + 'px, ' + r.left + 'px ' + top + 'px'
+            + ', ' + r.left + 'px 0px'
         }
         return d + ')'
       }
@@ -1941,13 +1975,20 @@ window.__ModuleLoader__.load({
        *  会把 a.md 的标记继续画在 b.md 上。 */
       function locateQuoteCached(q) {
         var cached = locateCache !== null ? locateCache.get(q) : undefined
-        if (cached !== undefined && rangeAlive(cached.range, q.text) && sourceAlive(cached.range, q)) {
-          return cached.range
+        if (cached !== undefined) {
+          if (cached.range !== null && rangeAlive(cached.range, q.text) && sourceAlive(cached.range, q)) {
+            return cached.range
+          }
+          // 上一次重定位失败、且之后宿主 DOM 没有变化（滚动/快速滚动本身不改
+          // DOM）：直接沿用失败结果，别每帧重跑 locateQuote 的全量文本扫描——
+          // 长会话里每条批注一次 O(文本长度) 扫描，快速滚动会把主线程拖满，
+          // 标记跟不上滚动就会闪现。加载更早等 DOM 变化会递增 seq，自然重试。
+          if (cached.range === null && cached.domSeq === domMutationSeq) return null
         }
         var range = locateQuote(q.text, q)
         if (locateCache !== null) {
           if (range !== null) locateCache.set(q, { range: range })
-          else locateCache.delete(q)
+          else locateCache.set(q, { range: null, domSeq: domMutationSeq })
         }
         return range
       }
@@ -2359,6 +2400,18 @@ window.__ModuleLoader__.load({
           return
         }
         var left = Math.max(8, Math.min(r.right - w - 12, window.innerWidth - w - 8))
+        // 宿主的「回到底部」按钮与胶囊同在输入卡片上方右侧。按钮存在时先按
+        // 可见矩形判断是否相交（水平、垂直各留一点呼吸余量），相交就把胶囊
+        // 整个让到按钮左侧——否则两枚控件叠在一起，胶囊的 hover / 点击都会
+        // 被按钮截走。左移后仍钳在视口内，空间实在不够时让位优先（不隐藏
+        // 胶囊：批注比按钮更重要）。
+        var avoid = toBottomRects()
+        for (var i = 0; i < avoid.length; i++) {
+          var a = avoid[i]
+          if (left + w + 6 <= a.left || left >= a.right + 6) continue
+          if (top + h + 4 <= a.top || top >= a.bottom + 4) continue
+          left = Math.max(8, a.left - w - 8)
+        }
         if (chipGeom.left !== left || chipGeom.top !== top) {
           chipGeom.left = left
           chipGeom.top = top

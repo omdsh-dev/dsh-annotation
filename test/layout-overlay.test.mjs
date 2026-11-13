@@ -130,26 +130,34 @@ const COMPOSER = { left: 120, top: 600, right: 820, bottom: 700, width: 700, hei
 /** Stub DOM driving the real renderMarkers: one full-width top bar, one
  *  sidebar-only header (outside the conversation column), the composer seat
  *  and the scroll body, keyed by the CSS-Modules local name hostLocalRects
- *  asks for. */
-function makeDom (viewRect, scrollBodyRect) {
+ *  asks for. `scrollingHeaders` models code-block toolbars inside the scroll
+ *  body (their rects move with the conversation; they must not become holes). */
+function makeDom (viewRect, scrollBodyRect, options = {}) {
   const classOf = (token) => 'wSkVaW_' + token
+  const scrollingHeaders = options.scrollingHeaders ?? []
   const el = (token, rect) => ({
     getAttribute: (attr) => (attr === 'class' ? classOf(token) : null),
     getBoundingClientRect: () => rect,
   })
+  // [data-conversation-scroll] 元素（data 钩子）与仅靠类名命中 scrollBody 的
+  // 元素在测试里是两个替身：前者用 viewRect、后者用 scrollBodyRect，用来验证
+  // 「data 属性优先、缺失时回退类名并集」。contains 用于识别随正文滚动的 header。
+  const viewEl = viewRect === null ? null : {
+    getBoundingClientRect: () => viewRect,
+    contains: (target) => target.__inScroll === true,
+  }
   const byToken = {
     header: [
       el('header', { left: 0, top: 0, right: 1000, bottom: 64, width: 1000, height: 64 }),
       el('header', { left: 950, top: 0, right: 990, bottom: 64, width: 40, height: 64 }),
+      ...scrollingHeaders.map((rect) => ({ ...el('header', rect), __inScroll: true })),
     ],
     composerSeat: [el('composerSeat', COMPOSER)],
     scrollBody: scrollBodyRect === null ? [] : [el('scrollBody', scrollBodyRect)],
   }
   return {
     querySelector: (selector) => {
-      if (selector === '[data-conversation-scroll]') {
-        return viewRect === null ? null : { getBoundingClientRect: () => viewRect }
-      }
+      if (selector === '[data-conversation-scroll]') return viewEl
       if (selector === '[data-composer-card]') {
         return { getBoundingClientRect: () => COMPOSER }
       }
@@ -162,7 +170,7 @@ function makeDom (viewRect, scrollBodyRect) {
   }
 }
 
-function runRenderMarkers (viewRect, scrollBodyRect) {
+function runRenderMarkers (viewRect, scrollBodyRect, options) {
   const overlay = { style: {}, textContent: '' }
   const numLayer = { style: {}, textContent: '' }
   // renderMarkers 现在把宿主元素列表/会话列/输入卡片引用都缓存到函数静态属性上
@@ -179,7 +187,7 @@ function runRenderMarkers (viewRect, scrollBodyRect) {
     'document', 'window', 'overlay', 'numLayer', 'markersSig', 'markerHoles', 'buildMarkers',
     `${prelude}\n${tryExtractFunction('renderMarkers')}\nreturn renderMarkers`,
   )
-  run(makeDom(viewRect, scrollBodyRect), { innerWidth: 1000, innerHeight: 800 },
+  run(makeDom(viewRect, scrollBodyRect, options), { innerWidth: 1000, innerHeight: 800 },
     overlay, numLayer, null, null, () => {})()
   return overlay.style.clipPath
 }
@@ -187,9 +195,11 @@ function runRenderMarkers (viewRect, scrollBodyRect) {
 test('renderMarkers 的 clipPath 挖掉会话列内的顶栏横带，高亮不再压住顶栏（issue #62，#63 的会话列限定）', () => {
   const clipPath = runRenderMarkers(VIEW, VIEW)
   assert.notEqual(clipPath, 'none')
-  // header hole: the conversation column from the viewport top down to the scroll body
+  // header hole: the conversation column from the viewport top down to the scroll body.
+  // 每个洞都从视口上沿桥接进入、绕洞一圈、原路返回（y=0 时去程与洞左上角重合），
+  // 保证多个洞串联时 evenodd 判定不被洞间连接线污染。
   assert.ok(
-    clipPath.includes('12px 0px, 912px 0px, 912px 64px, 12px 64px, 12px 0px'),
+    clipPath.includes('12px 0px, 12px 0px, 912px 0px, 912px 64px, 12px 64px, 12px 0px, 12px 0px'),
     `header hole missing from ${clipPath}`,
   )
   // the hole must not span the whole width: sidebar file markers (#57) stay visible
@@ -200,22 +210,33 @@ test('renderMarkers 的 clipPath 挖掉会话列内的顶栏横带，高亮不�
 test('输入框挖洞（issue #50）保持原样，两个洞互不影响', () => {
   const clipPath = runRenderMarkers(VIEW, VIEW)
   assert.ok(
-    clipPath.includes('120px 600px, 820px 600px, 820px 700px, 120px 700px, 120px 600px'),
+    clipPath.includes('120px 0px, 120px 600px, 820px 600px, 820px 700px, 120px 700px, 120px 600px, 120px 0px'),
     `composer hole missing from ${clipPath}`,
   )
 })
 
 test('没有会话滚动容器（data 属性与 scrollBody 启发式都落空）时，标记层退回只挖输入框', () => {
   const expected = 'polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, '
-    + '120px 600px, 820px 600px, 820px 700px, 120px 700px, 120px 600px)'
+    + '120px 0px, 120px 600px, 820px 600px, 820px 700px, 120px 700px, 120px 600px, 120px 0px)'
   assert.equal(runRenderMarkers(null, null), expected)
 })
 
 test('data 属性缺失但 scrollBody 可见时，会话列退回类名启发式（不依赖单一宿主钩子）', () => {
   const clipPath = runRenderMarkers(null, VIEW)
   assert.ok(
-    clipPath.includes('12px 0px, 912px 0px, 912px 64px, 12px 64px, 12px 0px'),
+    clipPath.includes('12px 0px, 12px 0px, 912px 0px, 912px 64px, 12px 64px, 12px 0px, 12px 0px'),
     `fallback header hole missing from ${clipPath}`,
+  )
+})
+
+test('随正文滚动的代码块 header 不进裁剪路径（否则高亮滚动时闪一下）', () => {
+  const movingHeader = { left: 1050, top: 16, right: 1647, bottom: 38, width: 597, height: 22 }
+  const clipPath = runRenderMarkers(VIEW, VIEW, { scrollingHeaders: [movingHeader] })
+  assert.ok(!clipPath.includes('1050px'), `moving in-content header must not become a hole: ${clipPath}`)
+  // 滚动容器之外的真实会话头部仍然参与裁剪（顶栏横带照旧被挖掉）。
+  assert.ok(
+    clipPath.includes('12px 0px, 12px 0px, 912px 0px, 912px 64px, 12px 64px, 12px 0px, 12px 0px'),
+    `host header hole must remain: ${clipPath}`,
   )
 })
 

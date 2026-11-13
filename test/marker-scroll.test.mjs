@@ -161,6 +161,7 @@ function makeHarness () {
      var locateCache = new WeakMap()
      var markerHoles = null
      var markersSig = null
+     var domMutationSeq = 0
      ${prelude}
      return {
        render: renderMarkers,
@@ -417,7 +418,10 @@ test('locateQuoteCached 用 rangeAlive + sourceAlive 快路径，滚动不再重
     '缓存命中必须同时满足 Range 存活与来源文件未变')
   assert.match(cached, /locateQuote\(q\.text, q\)/, '只有缓存失效才走慢路径')
   assert.match(cached, /locateCache\.set\(q, \{ range: range \}\)/, '定位成功写回缓存')
-  assert.match(cached, /locateCache\.delete\(q\)/, '定位失败清除旧缓存')
+  assert.match(cached, /cached\.domSeq === domMutationSeq/,
+    '定位失败后宿主 DOM 未变化时直接复用失败结果，滚动不重复全量扫描')
+  assert.match(cached, /locateCache\.set\(q, \{ range: null, domSeq: domMutationSeq \}\)/,
+    '定位失败按 DOM 版本记录，DOM 变化（加载更早/重渲染）后才重试')
 
   const sourceGuard = sliceBetween('function sourceAlive(', 'function rangeAlive(')
   assert.match(sourceGuard, /if \(!q\.sourceUrl\) return true/, '普通正文批注不做额外工作')
