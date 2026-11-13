@@ -28,10 +28,11 @@ Sidebar file annotations (DSH 0.1.6-alpha.1): select plain text, Markdown, or co
 
 | Feature | Description |
 |---|---|
-| Select-to-annotate | Select assistant text → toolbar "Annotate" → write your note (may be empty); dismiss by clicking elsewhere or pressing Esc |
+| Select-to-annotate | Select assistant text → toolbar "Annotate" → write your note (may be empty); dismiss by clicking elsewhere or pressing Esc. The selected passage is highlighted as soon as the editor opens, and the highlight reverts when the annotation is dismissed |
+| Quick tags | After selecting text, click the tag icon in the toolbar (it shares the bar with "Annotate", separated by a thin line) to expand floating tag pills (default Yes / No, "+" adds a custom tag); clicking a tag immediately creates an annotation whose number marker is followed by the tag text. Hover a pill and click its round × to delete it permanently. Tags persist in a standalone JSON file under the DSH home (default `~/.dsh/dsh-annotation-tags.json`, overridable with the plugin's `config.tagsFile`); the default Yes / No are built in and no file is created until a tag changes |
 | Numbered marker + highlight | A blue numbered marker + highlight anchored to the passage, viewport-anchored with collision avoidance, never lost when scrolled out of view |
 | Cross-turn collection | Any number of annotations accumulate across messages/turns, numbered from 1 |
-| "Annotations ×N" chip | Small chip beside the input box; hover shows every annotation, deletable individually |
+| "Annotations ×N" chip | Small chip beside the input box; hover shows every annotation, deletable individually. Automatically shifts left when the host's floating "Back to bottom" button appears |
 | Enter sends with your message | Annotation block + the question in the input box are sent to the model together (the model receives the full content) |
 | Hidden in your bubble | The annotation block is removed from your bubble's DOM the moment you send (before the browser paints), leaving only the question + the chip (hover to view); historical messages self-heal after a refresh |
 | Numbered reply correspondence | A format instruction is injected into the message so the model replies `Annotation 1: …` … `Annotation N: …` one by one |
@@ -141,6 +142,7 @@ Environments without a service manager (e.g. some containers) often need **no re
 
 | Version | Highlights |
 |---|---|
+| v1.4.14 | Marker robustness: pending chip avoids the host "back to bottom" button, clip-path holes bridged independently, no per-frame clip-path rewrites, failed lookups cached per DOM version |
 | v1.4.x | Locale-aware: zh/en UI copy and annotation protocol block, live switch via DSH `locale` service |
 | v1.3.x | Numbered reply correspondence: format-instruction injection + hoverable `Annotation N:` chips (TreeWalker snapshot fix) |
 | v1.2.x | Hidden annotation block in bubble: MutationObserver microtask zero-flicker + polling fallback + historical-message repair |

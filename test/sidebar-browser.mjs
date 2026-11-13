@@ -1,5 +1,6 @@
 // Run with PLAYWRIGHT_MODULE pointing to an existing Playwright installation.
 import assert from 'node:assert/strict'
+import { fileURLToPath } from 'node:url'
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
 try {
@@ -20,7 +21,7 @@ try {
     await page.evaluate(() => {
       window.__ModuleLoader__ = { load(entry) { window.api = entry.factory(() => ({})) } }
     })
-    await page.addScriptTag({ path: new URL('../client.js', import.meta.url).pathname })
+    await page.addScriptTag({ path: fileURLToPath(new URL('../client.js', import.meta.url)) })
     await page.evaluate(() => {
       window.draft = '请检查'
       window.dispose = window.api.apply({ sessions: {
@@ -54,15 +55,18 @@ try {
     document.querySelector('[data-document-markdown]').style.height = '300px'
     body.scrollTop = 200
   })
-  await page.waitForFunction(() => document.querySelectorAll('.dsh-ann-num').length === 0)
-  assert.equal(await page.locator('.dsh-ann-num').count(), 0, '滚出预览区域的内容不在外面显示标记')
+  // 标记层改为元素池后，滚出预览区的标记是 display:none（不再从 DOM 移除），
+  // 行为断言仍是「滚出预览区域的内容不在外面显示标记」：统计真正渲染的标记。
+  await page.waitForFunction(() => [...document.querySelectorAll('.dsh-ann-num')]
+    .every(el => el.getClientRects().length === 0))
+  assert.equal(await page.locator('.dsh-ann-num:visible').count(), 0, '滚出预览区域的内容不在外面显示标记')
   await page.evaluate(() => { document.querySelector('[data-textpreview-body]').scrollTop = 0 })
   await page.waitForTimeout(150)
-  assert.equal(await page.locator('.dsh-ann-num').count(), 1)
+  assert.equal(await page.locator('.dsh-ann-num:visible').count(), 1)
 
   await page.evaluate(() => document.querySelector('[data-textpreview-url]').setAttribute('data-textpreview-url', 'dsh-resource://file/session/session/docs/b.md'))
   await page.waitForTimeout(150)
-  assert.equal(await page.locator('.dsh-ann-num').count(), 0, '相同文本的新文件不继承旧标记')
+  assert.equal(await page.locator('.dsh-ann-num:visible').count(), 0, '相同文本的新文件不继承旧标记')
   await add()
   assert.equal((await records()).length, 2, '同文不同文件分别保存')
   await page.reload()

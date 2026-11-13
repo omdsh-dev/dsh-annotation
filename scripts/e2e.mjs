@@ -194,7 +194,11 @@ try {
         await page.locator('[data-dockkit-add-tab]').first().click()
       }
       await files.click()
-      await page.locator('[data-files-entry="file"][data-files-path$="/README.zh-CN.md"] > button').click()
+      // DSH 0.2.2 still renders the file row as li[data-files-entry] but now wraps
+      // its button in an extra div.row (the row keeps the hover/current classes), so
+      // the old direct-child selector `li > button` no longer matches. A descendant
+      // selector works for both the pre-0.2.2 and the current tree markup.
+      await page.locator('[data-files-entry="file"][data-files-path$="/README.zh-CN.md"] button').click()
       await page.locator('[data-document-markdown] p').first().waitFor({ state: 'visible' })
     }
     await openFile()
