@@ -77,7 +77,58 @@ window.__ModuleLoader__.load({
         '  font-size: 12px; line-height: 18px; cursor: pointer; }',
         '.dsh-ann-ghost:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }',
         '.dsh-ann-ghost:disabled { opacity: .45; cursor: default; }',
+        // 展开标签面板时压暗「批注」按钮，暗示「标签 / 批注」二选一（仍可点击）。
+        '.dsh-ann-ghost-dim { opacity: .42; }',
+        '.dsh-ann-ghost-dim:hover:not(:disabled) { opacity: .68; }',
         '.dsh-ann-ghost svg { width: 14px; height: 14px; }',
+        // 标签入口与「批注」融合成 split：细竖线 + 紧凑图标按钮，负 margin 贴近。
+        '.dsh-ann-split { flex: none; width: 1px; height: 16px; margin: 0 -2px;',
+        '  background: var(--dsw-alias-border-inverted, rgba(255,255,255,.18)); }',
+        '.dsh-ann-tag-toggle { display: inline-flex; align-items: center; justify-content: center;',
+        '  flex: none; width: 26px; height: 28px; padding: 0; margin-left: -5px;',
+        '  border: none; border-radius: 13px;',
+        '  background: transparent; color: var(--dsw-alias-label-secondary, #b6b8bc); cursor: pointer; }',
+        '.dsh-ann-tag-toggle:hover, .dsh-ann-tag-toggle[aria-expanded="true"] {',
+        '  background: var(--dsw-alias-interactive-bg-hover);',
+        '  color: var(--dsw-alias-label-primary, #ededee); }',
+        '.dsh-ann-tag-toggle svg { width: 14px; height: 14px; }',
+        // 快捷标签：工具条内向右展开的浮岛按钮（末尾「+」），hover 右上角小叉删除；
+        // 展开/收起的宽度过渡由 JS 控制。
+        '.dsh-ann-tags { display: inline-flex; align-items: center; gap: 6px; padding: 0 2px;',
+        '  overflow: hidden; }',
+        '.dsh-ann-tag { position: relative; display: inline-flex; align-items: center;',
+        '  height: 22px; padding: 0 9px; border: 1px solid var(--dsw-alias-border-l2, rgba(255,255,255,.16));',
+        '  border-radius: 11px; background: var(--dsw-alias-bg-layer-1, #1b1b1c);',
+        '  color: var(--dsw-alias-label-primary, #ededee); font-family: inherit;',
+        '  font-size: 11px; line-height: 20px; white-space: nowrap; cursor: pointer; }',
+        '.dsh-ann-tag:hover:not(:disabled) { border-color: var(--dsw-alias-text-accent, #4c9aff); }',
+        '.dsh-ann-tag-del { position: absolute; top: -7px; right: -7px; display: none;',
+        '  width: 15px; height: 15px; padding: 0; border-radius: 8px;',
+        '  border: 1px solid var(--dsw-alias-border-inverted, rgba(255,255,255,.3));',
+        '  background: var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-base, #2c2c2e));',
+        '  color: var(--dsw-alias-label-secondary, #b6b8bc); font-size: 10px; line-height: 13px;',
+        '  text-align: center; cursor: pointer; }',
+        '.dsh-ann-tag:hover .dsh-ann-tag-del, .dsh-ann-tag:focus-within .dsh-ann-tag-del { display: block; }',
+        '.dsh-ann-tag-add { display: inline-flex; align-items: center; justify-content: center;',
+        '  width: 22px; height: 22px; padding: 0; border-radius: 11px;',
+        '  border: 1px dashed var(--dsw-alias-border-l2, rgba(255,255,255,.22)); background: transparent;',
+        '  color: var(--dsw-alias-label-secondary, #b6b8bc); font-size: 14px; line-height: 1; cursor: pointer; }',
+        '.dsh-ann-tag-add:hover { border-color: var(--dsw-alias-text-accent, #4c9aff);',
+        '  color: var(--dsw-alias-label-primary, #ededee); }',
+        '.dsh-ann-tag-input { width: 84px; height: 22px; padding: 0 8px; border-radius: 11px;',
+        '  border: 1px solid var(--dsw-alias-text-accent, #4c9aff);',
+        '  background: var(--dsw-alias-bg-layer-1, #1b1b1c); color: var(--dsw-alias-label-primary, #ededee);',
+        '  font-family: inherit; font-size: 11px; line-height: 20px; outline: none; }',
+        '.dsh-ann-tag-input::placeholder { color: var(--dsw-alias-label-dimmed, #73767b); }',
+        // 编号后跟随的标签文字（纯展示，不加粗，避免小字号发虚）。
+        '.dsh-ann-num-tag { position: fixed; z-index: 941; display: inline-flex;',
+        '  align-items: center; max-width: 76px; height: 16px; padding: 0 5px;',
+        '  border-radius: 8px; border: 1px solid rgba(255, 255, 255, .28);',
+        '  background: var(--dsw-alias-bg-layer-2, #2c2c2e);',
+        '  color: var(--dsw-alias-label-secondary, #b6b8bc); font-family: var(--dsw-font-family, system-ui);',
+        '  font-size: 11px; font-weight: 450; line-height: 14px; white-space: nowrap;',
+        '  overflow: hidden; text-overflow: ellipsis; box-shadow: 0 1px 4px rgba(0,0,0,.35);',
+        '  pointer-events: none; }',
         '.dsh-ann-action { display: inline-flex; align-items: center; gap: 5px; height: 28px;',
         '  padding: 0 12px; border: none; border-radius: 14px;',
         '  background: var(--dsw-alias-button-primary-fill);',
@@ -147,7 +198,7 @@ window.__ModuleLoader__.load({
         '.dsh-ann-row { display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; }',
         '.dsh-ann-error { color: var(--dsw-alias-state-error-primary, #ff7a7a);',
         '  font-size: 12px; margin-top: 8px; word-break: break-word; }',
-        '.dsh-ann-hl { position: fixed; z-index: 900; background: rgba(255, 195, 0, .15);',
+        '.dsh-ann-hl, .dsh-ann-hl-preview { position: fixed; z-index: 900; background: rgba(255, 195, 0, .15);',
         '  border-radius: 2px; pointer-events: none; animation: dsh-ann-fadein .15s ease; }',
         '.dsh-ann-num { position: fixed; z-index: 940; display: inline-flex; align-items: center;',
         '  justify-content: center; min-width: 16px; height: 16px; padding: 0 4px;',
@@ -178,7 +229,10 @@ window.__ModuleLoader__.load({
           already: '已批注',
           annotateTitle: '为选中的内容写一条批注',
           alreadyTitle: '这段内容已在批注清单中',
+          tags: '标签',
+          tagsTitle: '用标签快速批注选中的内容',
         },
+        tags: { add: '新增标签', del: '删除标签', placeholder: '新标签' },
         edit: {
           addTitle: '添加批注',
           editTitle: '编辑批注',
@@ -199,6 +253,7 @@ window.__ModuleLoader__.load({
           attachFail: '批注拼稿失败，消息将不带批注发送：',
           skipCommand: '本条是斜杠命令，未拼入批注；批注已保留，将随下一条消息发送',
           noSession: '无法确定当前会话，批注未拼入（已保留，将随下一条消息重试）',
+          tagsFail: '标签保存失败：无法连接 DSH Host（更新插件后需重启 DSH 才能持久化）',
         },
         block: {
           head: '我批注了以下 {n} 处内容（编号与原文对应），请针对它们回答我的问题：',
@@ -215,7 +270,10 @@ window.__ModuleLoader__.load({
           already: 'Annotated',
           annotateTitle: 'Write a note about the selected text',
           alreadyTitle: 'This passage is already in your annotation list',
+          tags: 'Tags',
+          tagsTitle: 'Quick-annotate the selection with a tag',
         },
+        tags: { add: 'Add tag', del: 'Delete tag', placeholder: 'New tag' },
         edit: {
           addTitle: 'Add annotation',
           editTitle: 'Edit annotation',
@@ -236,6 +294,7 @@ window.__ModuleLoader__.load({
           attachFail: 'Failed to attach annotations; the message will be sent without them: ',
           skipCommand: 'Slash command detected — annotations stay pending and will attach to your next message',
           noSession: 'Cannot determine the current session; annotations kept pending and will retry with your next message',
+          tagsFail: 'Failed to save tags: cannot reach the DSH Host (restart DSH after updating the plugin)',
         },
         block: {
           head: 'I annotated the following {n} passage(s) (the numbers match the quotes below); please respond to them when answering my question:',
@@ -252,7 +311,10 @@ window.__ModuleLoader__.load({
           already: 'Уже аннотировано',
           annotateTitle: 'Написать примечание к выделенному тексту',
           alreadyTitle: 'Этот фрагмент уже в списке аннотаций',
+          tags: 'Теги',
+          tagsTitle: 'Быстрая аннотация выделенного текста тегом',
         },
+        tags: { add: 'Добавить тег', del: 'Удалить тег', placeholder: 'Новый тег' },
         edit: {
           addTitle: 'Добавить аннотацию',
           editTitle: 'Изменить аннотацию',
@@ -275,6 +337,7 @@ window.__ModuleLoader__.load({
         toast: {
           attachFail: 'Не удалось собрать аннотации; сообщение уйдёт без них: ',
           skipCommand: 'Это слэш-команда — аннотации остаются в очереди и уйдут со следующим сообщением',
+          tagsFail: 'Не удалось сохранить теги: нет связи с DSH Host (перезапустите DSH после обновления плагина)',
         },
         // Разбор блока опирается на три вещи: заголовок начинается с BLOCK_HEADS.ru,
         // разделитель вопроса — block.marker, префикс примечания — notePrefix.
@@ -883,7 +946,7 @@ window.__ModuleLoader__.load({
       return { left: Math.round(left), top: Math.round(Math.max(8, top)) }
     }
 
-    function svg(paths, viewBox) {
+    function svg(paths, viewBox, fillRule) {
       var s = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
       s.setAttribute('viewBox', viewBox)
       s.setAttribute('fill', 'none')
@@ -892,6 +955,7 @@ window.__ModuleLoader__.load({
         var p = document.createElementNS('http://www.w3.org/2000/svg', 'path')
         p.setAttribute('d', paths[i])
         p.setAttribute('fill', 'currentColor')
+        if (fillRule !== undefined) p.setAttribute('fill-rule', fillRule)
         s.appendChild(p)
       }
       return s
@@ -899,6 +963,11 @@ window.__ModuleLoader__.load({
     var ICONS = {
       plus: function () {
         return svg(['M8.64453 1.5V7.34961H14.5V8.65039H8.64453V14.5H7.34473V8.65039H1.5V7.34961H7.34473V1.5H8.64453Z'], '0 0 16 16')
+      },
+      tag: function () {
+        return svg([
+          'M2 3.5C2 2.67 2.67 2 3.5 2h4.2c.4 0 .78.16 1.06.44l5.3 5.3c.59.59.59 1.54 0 2.13l-5.3 5.3c-.59.59-1.54.59-2.13 0l-5.3-5.3A1.5 1.5 0 0 1 2 8.8V3.5ZM5.6 4.7a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z',
+        ], '0 0 16 16', 'evenodd')
       },
       check: function () {
         return svg([
@@ -1084,8 +1153,67 @@ window.__ModuleLoader__.load({
         // settle 时缓存的选区 Range：点击工具条按钮的瞬间浏览器已经清掉选区。
         // 进入编辑浮窗后它就是「待批注」预览高亮的 Range（同时用于抓保存锚点）。
         selectionRange: null,
+        // 点过「批注」或「标签」按钮后才显示预览高亮（工具条刚出现时不显示，
+        // 避免与浏览器默认的选区渲染重叠）；关闭工具条时复位。
+        previewArmed: false,
         el: null,
       }
+
+      // ---------- 快捷标签 ----------
+      // 标签持久化在 Host 端独立 JSON 文件（/annotation-tags 路由读写）；
+      // 默认 Yes / No 不落盘、无变更不建文件。路由不可用时退回默认标签。
+      var DEFAULT_TAGS = ['Yes', 'No']
+      var annotationTags = DEFAULT_TAGS.slice()
+      var tagPanelOpen = false
+      var tagBusy = false
+
+      function applyTags(list) {
+        if (!Array.isArray(list)) return
+        var next = []
+        for (var i = 0; i < list.length; i++) {
+          if (typeof list[i] === 'string' && list[i] !== '') next.push(list[i])
+        }
+        annotationTags = next
+        if (ui.mode === 'actions' && tagPanelOpen) refreshTagPanel()
+        renderMarkers()
+      }
+
+      function loadAnnotationTags() {
+        try {
+          fetch('/annotation-tags', { credentials: 'same-origin' }).then(function (res) {
+            if (!res.ok) throw new Error('HTTP ' + res.status)
+            return res.json()
+          }).then(function (data) {
+            if (data !== null && typeof data === 'object') applyTags(data.tags)
+          }).catch(function () { /* 路由不可用：保留默认标签 */ })
+        } catch (_) { /* 没有 fetch */ }
+      }
+
+      function mutateTags(action, tag) {
+        if (tagBusy) return
+        tagBusy = true
+        try {
+          fetch('/annotation-tags', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ action: action, tag: tag }),
+          }).then(function (res) {
+            if (!res.ok) throw new Error('HTTP ' + res.status)
+            return res.json()
+          }).then(function (data) {
+            tagBusy = false
+            if (data !== null && typeof data === 'object') applyTags(data.tags)
+          }).catch(function () {
+            tagBusy = false
+            showToast(t('toast.tagsFail'))
+          })
+        } catch (_) {
+          tagBusy = false
+          showToast(t('toast.tagsFail'))
+        }
+      }
+      loadAnnotationTags()
 
       function readPendingQuotes(sessionId) {
         if (sessionId === undefined) return []
@@ -1186,7 +1314,17 @@ window.__ModuleLoader__.load({
           ui.mode = 'closed'
           ui.lastKey = ''
         }
-        if (ui.mode === 'editing' || ui.mode === 'composing' || ignoreUntil > Date.now()) return
+        if (ui.mode === 'editing' || ui.mode === 'composing') return
+        if (ignoreUntil > Date.now()) {
+          // 点击工具条按钮会短暂屏蔽 selectionchange；屏蔽期内发生的重选不能丢
+          // （例如点 X 关闭浮窗后立刻重新选中原文）——屏蔽结束后再评估一次。
+          clearSettle()
+          settleTimer = setTimeout(function () {
+            settleTimer = null
+            onSelection()
+          }, ignoreUntil - Date.now() + 10)
+          return
+        }
         var sel = window.getSelection()
         if (sel === null || sel.isCollapsed || sel.rangeCount === 0) {
           clearSettle()
@@ -1242,6 +1380,8 @@ window.__ModuleLoader__.load({
             }
             return
           }
+          // 新选区出现工具条时先不显示预览；点过「批注/标签」后由 previewArmed 打开。
+          ui.previewArmed = false
           ui.lastKey = key
           ui.mode = 'actions'
           ui.quote = text
@@ -1277,8 +1417,8 @@ window.__ModuleLoader__.load({
         anchorRaf = true
         requestAnimationFrame(function () {
           anchorRaf = false
-          // 只有预览高亮（还没有已保存批注）时滚动也要重画标记层。
-          if (ui.quotes.length > 0 || (ui.mode === 'editing' && ui.selectionRange !== null)) renderMarkers()
+          // 工具条显示（actions）或新增批注编辑浮窗显示时，选区预览也要跟随滚动重画。
+          if (ui.quotes.length > 0 || previewActive()) renderMarkers()
           updateChip()
           if (ui.mode === 'editing' && ui.el !== null) positionEditor(ui.el, ui.pos.left, ui.pos.top)
           if (ui.mode !== 'actions' || ui.quote === '') return
@@ -1292,9 +1432,11 @@ window.__ModuleLoader__.load({
               rect = live.getBoundingClientRect()
             }
           }
-          if (rect === null) {
-            var range = locateQuote(ui.quote, ui.source)
-            if (range !== null) rect = range.getBoundingClientRect()
+          if (rect === null && ui.selectionRange !== null) {
+            // 点击工具条按钮后浏览器会清掉实时选区：用 settle 缓存的 Range 定位，
+            // 不要退回 locateQuote（按文本重定位可能命中文档里更早的相同文本，
+            // 工具条会突然跳到页面顶部）。
+            try { rect = ui.selectionRange.getBoundingClientRect() } catch (_) { rect = null }
           }
           if (rect === null || rect.width === 0 || rect.height === 0) {
             if (lostSince === 0) lostSince = Date.now()
@@ -1487,18 +1629,68 @@ window.__ModuleLoader__.load({
         if (ui.mode === 'actions') {
           var bar = document.createElement('div')
           bar.className = 'dsh-ann-bar'
-          bar.style.left = ui.pos.left + 'px'
-          bar.style.top = ui.pos.top + 'px'
+          // 防御：位置未初始化/失效时用缓存选区重算（不调用 locateQuote，避免重入/中断渲染）。
+          var pos = ui.pos
+          var posValid = pos !== null && pos !== undefined && isFinite(pos.left) && isFinite(pos.top)
+          if (!posValid || (pos.left === 0 && pos.top === 0 && ui.quote !== '')) {
+            var cachedRange = ui.selectionRange
+            var cachedRect = null
+            try { cachedRect = cachedRange !== null ? cachedRange.getBoundingClientRect() : null } catch (_) { cachedRect = null }
+            if (cachedRect !== null && cachedRect.width > 0 && cachedRect.height > 0) {
+              pos = placeAbove(cachedRect, 40)
+              ui.pos = pos
+              posValid = true
+            }
+          }
+          if (posValid) {
+            bar.style.left = pos.left + 'px'
+            bar.style.top = pos.top + 'px'
+          }
           var already = ui.quotes.some(function (q) { return q.text === ui.quote && (q.sourceUrl || '') === (ui.source && ui.source.sourceUrl || '') })
-          bar.appendChild(ghostButton(
+          var annotateBtn = ghostButton(
             already ? null : ICONS.plus,
             already ? t('actions.already') : t('actions.annotate'),
             already ? t('actions.alreadyTitle') : t('actions.annotateTitle'),
             already,
             enterEditing,
-          ))
+          )
+          // 面板处于展开态时进入 actions（例如重建）：批注按钮保持压暗。
+          if (tagPanelOpen) annotateBtn.classList.add('dsh-ann-ghost-dim')
+          bar.appendChild(annotateBtn)
+          // 标签入口：细线分隔 + 紧凑图标按钮，点击展开/收起浮岛标签。
+          var split = document.createElement('span')
+          split.className = 'dsh-ann-split'
+          split.setAttribute('aria-hidden', 'true')
+          bar.appendChild(split)
+          // 标签入口用 div[role=button] 而非原生 <button>：工具条里只保留「批注」
+          // 一个原生 button，宿主 e2e 的 `.dsh-ann-bar button` 选择器不会命中多个。
+          var tagToggle = document.createElement('div')
+          tagToggle.className = 'dsh-ann-tag-toggle'
+          tagToggle.setAttribute('role', 'button')
+          tagToggle.setAttribute('tabindex', '0')
+          tagToggle.title = t('actions.tagsTitle')
+          tagToggle.setAttribute('aria-label', t('actions.tags'))
+          tagToggle.setAttribute('aria-expanded', tagPanelOpen ? 'true' : 'false')
+          tagToggle.appendChild(ICONS.tag())
+          function activateTagToggle() {
+            ignoreUntil = Date.now() + 80
+            toggleTagPanel()
+          }
+          tagToggle.addEventListener('click', activateTagToggle)
+          tagToggle.addEventListener('keydown', function (e) {
+            if (e.key !== 'Enter' && e.key !== ' ') return
+            e.preventDefault()
+            activateTagToggle()
+          })
+          bar.appendChild(tagToggle)
+          if (tagPanelOpen) bar.appendChild(tagPanel())
           host.appendChild(bar)
           ui.el = bar
+          if (tagPanelOpen) {
+            requestAnimationFrame(function () {
+              if (bar.isConnected) clampBarToViewport(bar)
+            })
+          }
         } else if (ui.mode === 'editing') {
           var card = document.createElement('div')
           card.className = 'dsh-ann-card'
@@ -1570,6 +1762,280 @@ window.__ModuleLoader__.load({
             if (card.isConnected) positionEditor(card, ui.pos.left, ui.pos.top)
           })
         }
+      }
+
+      /** 展开/收起标签面板：只增删面板本身，不重建整条工具条——重建会把
+       *  「批注」按钮连同 bar 一起换掉，视觉上闪一下。 */
+      function toggleTagPanel() {
+        tagPanelOpen = !tagPanelOpen
+        // 点过「标签」按钮后预览高亮保持（展开、收起都显示），与编辑浮窗一致。
+        ui.previewArmed = true
+        paintPreviewHighlight()
+        // 点击工具条按钮会短暂清掉选区/触发 selectionchange：先取消挂起的 settle
+        // 并延长忽略窗口，避免刚展开的面板立即被重建（工具条闪走/面板消失）。
+        clearSettle()
+        ignoreUntil = Date.now() + 200
+        var bar = ui.el
+        if (bar === null || bar === undefined) {
+          render()
+          return
+        }
+        var toggle = bar.querySelector('.dsh-ann-tag-toggle')
+        var annotate = bar.querySelector('.dsh-ann-ghost')
+        var panel = bar.querySelector('.dsh-ann-tags')
+        if (tagPanelOpen) {
+          if (panel !== null && panel.__annClosing === true) {
+            // 收起动画进行中又点了展开：取消收起，从当前收窄宽度平滑续开到内容宽度。
+            panel.__annClosing = false
+            if (panel.__annTimer !== null) { clearTimeout(panel.__annTimer); panel.__annTimer = null }
+            var resumeWidth = Math.round(panel.getBoundingClientRect().width)
+            panel.style.overflow = 'hidden'
+            panel.style.maxWidth = resumeWidth + 'px'
+            panel.style.transition = 'max-width .2s linear, opacity .12s linear'
+            requestAnimationFrame(function () {
+              if (!panel.isConnected) return
+              panel.style.maxWidth = panel.scrollWidth + 'px'
+              panel.style.opacity = '1'
+            })
+            setTimeout(function () {
+              if (!panel.isConnected) return
+              panel.style.maxWidth = 'none'
+              panel.style.overflow = 'visible'
+              panel.style.transition = 'none'
+              clampBarToViewport(bar)
+            }, 240)
+          } else if (panel === null) {
+            // 逐渐展开：先以 0 宽插入，量出内容宽度后用 max-width transition
+            // 撑开——工具条宽度随之逐帧增长，浮岛内容本身不做逐个动画。
+            panel = tagPanel()
+            panel.style.maxWidth = '0px'
+            panel.style.opacity = '0'
+            panel.style.overflow = 'hidden'
+            bar.appendChild(panel)
+            var targetWidth = panel.scrollWidth
+            var reduceMotion = false
+            try {
+              reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+            } catch (_) { /* 默认播放动画 */ }
+            if (reduceMotion || targetWidth <= 0) {
+              panel.style.maxWidth = 'none'
+              panel.style.overflow = 'visible'
+              panel.style.opacity = '1'
+            } else {
+              panel.style.transition = 'max-width .24s linear, opacity .18s linear'
+              requestAnimationFrame(function () {
+                if (!panel.isConnected) return
+                panel.style.maxWidth = targetWidth + 'px'
+                panel.style.opacity = '1'
+              })
+              // 展开完成后放开宽度与裁剪：hover 删除叉可以溢出到面板外。
+              var settle = function () {
+                if (!panel.isConnected) return
+                panel.style.maxWidth = 'none'
+                panel.style.overflow = 'visible'
+                panel.style.transition = 'none'
+                clampBarToViewport(bar)
+              }
+              panel.addEventListener('transitionend', function onEnd(ev) {
+                if (ev.target !== panel || ev.propertyName !== 'max-width') return
+                panel.removeEventListener('transitionend', onEnd)
+                settle()
+              })
+              // 兜底：transition 被跳过/中断时也要恢复可用状态。
+              setTimeout(settle, 360)
+            }
+          }
+          if (toggle !== null) toggle.setAttribute('aria-expanded', 'true')
+          // 压暗「批注」按钮：暗示此刻在「标签 / 批注」里二选一。
+          if (annotate !== null) annotate.classList.add('dsh-ann-ghost-dim')
+          // 面板把工具条向右撑宽：展开后整条重新钳回视口内。
+          requestAnimationFrame(function () {
+            if (bar.isConnected) clampBarToViewport(bar)
+          })
+        } else {
+          if (panel !== null && panel.__annClosing !== true) {
+            // 逐渐缩回：先把当前宽度固定住，再 transition 到 0 宽/透明，
+            // 动画结束才从 DOM 移除；期间再点展开会取消收起、平滑续开。
+            panel.__annClosing = true
+            panel.style.overflow = 'hidden'
+            panel.style.maxWidth = Math.round(panel.getBoundingClientRect().width) + 'px'
+            panel.style.transition = 'max-width .22s linear, opacity .16s linear'
+            var removePanel = function () {
+              // 收起途中又被展开时（__annClosing 已被复位），这里的旧回调必须失效。
+              if (panel.__annClosing !== true) return
+              if (!panel.isConnected) return
+              if (panel.__annTimer !== null) { clearTimeout(panel.__annTimer); panel.__annTimer = null }
+              panel.remove()
+            }
+            panel.__annTimer = setTimeout(removePanel, 300)
+            panel.addEventListener('transitionend', function onEnd(ev) {
+              if (ev.target !== panel || ev.propertyName !== 'max-width') return
+              panel.removeEventListener('transitionend', onEnd)
+              removePanel()
+            })
+            requestAnimationFrame(function () {
+              if (!panel.isConnected) return
+              panel.style.maxWidth = '0px'
+              panel.style.opacity = '0'
+            })
+          }
+          if (toggle !== null) toggle.setAttribute('aria-expanded', 'false')
+          if (annotate !== null) annotate.classList.remove('dsh-ann-ghost-dim')
+        }
+      }
+
+      /** 把整条工具条钳回视口内（展开标签/页面缩放后调用）。 */
+      function clampBarToViewport(bar) {
+        var left = Math.max(8, Math.min(ui.pos.left, window.innerWidth - bar.offsetWidth - 8))
+        if (left !== ui.pos.left) {
+          ui.pos.left = left
+          bar.style.left = left + 'px'
+        }
+      }
+
+      /** 标签持久化数据变化时只重填面板内容，不重建工具条。 */
+      function refreshTagPanel() {
+        var bar = ui.el
+        if (bar === null || bar === undefined) return
+        var old = bar.querySelector('.dsh-ann-tags')
+        if (old === null || old.parentNode === null) return
+        old.parentNode.replaceChild(tagPanel(), old)
+      }
+
+      /** 工具条内向右展开的标签面板：浮岛按钮 + 末尾「+」新增。 */
+      function tagPanel() {
+        var panel = document.createElement('div')
+        panel.className = 'dsh-ann-tags'
+        panel.__annClosing = false
+        panel.__annTimer = null
+        for (var i = 0; i < annotationTags.length; i++) panel.appendChild(tagPill(annotationTags[i]))
+        var add = document.createElement('button')
+        add.type = 'button'
+        add.className = 'dsh-ann-tag-add'
+        add.textContent = '+'
+        add.title = t('tags.add')
+        // 指针点击在输入框失焦前处理，避免空输入框先被 blur 移除、click 又重开。
+        var handledByPointer = false
+        function runAddAction() {
+          var input = panel.querySelector('.dsh-ann-tag-input')
+          if (input === null) {
+            showTagInput(panel, add)
+            return
+          }
+          // 输入框已打开时再点「+」：空内容取消；有内容按 Enter 提交。
+          if ((input.value || '').trim() === '') {
+            input.dataset.done = '1'
+            input.remove()
+            return
+          }
+          commitTag(input)
+        }
+        add.addEventListener('pointerdown', function (ev) {
+          ev.preventDefault()
+          handledByPointer = true
+          runAddAction()
+        })
+        add.addEventListener('click', function () {
+          if (handledByPointer) {
+            handledByPointer = false
+            return
+          }
+          runAddAction()
+        })
+        panel.appendChild(add)
+        return panel
+      }
+
+      function tagPill(tag) {
+        var pill = document.createElement('button')
+        pill.type = 'button'
+        pill.className = 'dsh-ann-tag'
+        pill.title = tag
+        var label = document.createElement('span')
+        label.className = 'dsh-ann-tag-label'
+        label.textContent = tag
+        pill.appendChild(label)
+        var del = document.createElement('span')
+        del.className = 'dsh-ann-tag-del'
+        del.textContent = '×'
+        del.title = t('tags.del')
+        del.addEventListener('click', function (ev) {
+          ev.stopPropagation()
+          ev.preventDefault()
+          mutateTags('remove', tag)
+        })
+        pill.appendChild(del)
+        pill.addEventListener('click', function () {
+          ignoreUntil = Date.now() + 80
+          chooseTag(tag)
+        })
+        return pill
+      }
+
+      /** 点「+」后在本地面板内展开输入框：Enter 保存、Esc 取消、失焦保存。 */
+      function showTagInput(panel, add) {
+        if (panel.querySelector('.dsh-ann-tag-input') !== null) return
+        var input = document.createElement('input')
+        input.type = 'text'
+        input.className = 'dsh-ann-tag-input'
+        input.maxLength = 24
+        input.placeholder = t('tags.placeholder')
+        input.addEventListener('keydown', function (ev) {
+          ev.stopPropagation()
+          if (ev.key === 'Enter') { ev.preventDefault(); commitTag(input) }
+          else if (ev.key === 'Escape') { ev.preventDefault(); input.remove(); add.focus() }
+        })
+        input.addEventListener('blur', function () { commitTag(input) })
+        panel.appendChild(input)
+        input.focus()
+      }
+
+      function commitTag(input) {
+        if (input.dataset.done === '1') return
+        input.dataset.done = '1'
+        var value = (input.value || '').trim().slice(0, 24)
+        if (value === '' || annotationTags.indexOf(value) !== -1) {
+          input.remove()
+          return
+        }
+        mutateTags('add', value)
+      }
+
+      /** 选标签 = 直接给当前选区建批注（note=标签）；同一原文已有批注则替换标签。 */
+      function chooseTag(tag) {
+        if (ui.mode !== 'actions' || ui.quote === '') return
+        var text = ui.quote
+        var anchor = captureAnchor(text, ui.selectionRange)
+        var sourceUrl = anchor.sourceUrl || ''
+        var existing = null
+        for (var i = 0; i < ui.quotes.length; i++) {
+          if (ui.quotes[i].text === text && (ui.quotes[i].sourceUrl || '') === sourceUrl) {
+            existing = ui.quotes[i]
+            break
+          }
+        }
+        if (existing !== null) {
+          existing.note = tag
+        } else {
+          ui.quotes.push({
+            id: 'q-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6),
+            text: text,
+            note: tag,
+            range: anchor.range,
+            ...(anchor.sourceUrl ? { sourceUrl: anchor.sourceUrl, sourcePath: anchor.sourcePath } : {}),
+            seqKey: anchor.seqKey,
+            rowHead: anchor.rowHead,
+            textOffset: anchor.textOffset,
+            ctxBefore: anchor.ctxBefore,
+            ctxAfter: anchor.ctxAfter,
+          })
+        }
+        writeCurrentPendingQuotes()
+        tagPanelOpen = false
+        closeToolbar()
+        updateChip()
+        renderMarkers()
+        focusComposer()
       }
 
       function positionEditor(card, left, top) {
@@ -1830,7 +2296,7 @@ window.__ModuleLoader__.load({
             if (r.top > -8 && r.top < window.innerHeight) { anchor = r; break }
           }
           if (anchor === null && rects.length > 0 && rects[0].width > 0) anchor = rects[0]
-          if (anchor === null) { hideMarkerEl(entry.chip); continue }
+          if (anchor === null) { hideMarkerEl(entry.chip); hideMarkerEl(entry.tagEl); continue }
           var chipTop = anchor.top - 20
           if (chipTop < 4) chipTop = Math.min(anchor.top + 2, window.innerHeight - 22)
           if (chipTop < 4) chipTop = 4
@@ -1858,10 +2324,13 @@ window.__ModuleLoader__.load({
             if (chipLeft + 26 <= bk.left || chipLeft >= bk.right) continue
             if (chipTop + 18 > bk.top && chipTop < bk.bottom) skipChip = true
           }
-          if (skipChip) { hideMarkerEl(entry.chip); continue }
+          if (skipChip) { hideMarkerEl(entry.chip); hideMarkerEl(entry.tagEl); continue }
           var chip = chipAt(entry)
           var label = String(i + 1)
-          if (chip.textContent !== label) chip.textContent = label
+          if (chip.textContent !== label) {
+            chip.textContent = label
+            entry.chipWidth = 0
+          }
           var tries = 0
           while (tries < 12) {
             var clash = false
@@ -1879,6 +2348,30 @@ window.__ModuleLoader__.load({
           }
           placed.push({ left: chipLeft, top: chipTop })
           placeMarkerEl(chip, Math.round(chipLeft), Math.round(chipTop), null, null)
+          // 编号 hover 提示：批注内容前 10 个字符；标签批注已有标签文字，不重复提示。
+          var tagText = tagOf(q)
+          var chipTitle = ''
+          if (tagText === '') {
+            var noteText = (q.note || '').trim()
+            if (noteText !== '') {
+              chipTitle = Array.from(noteText.replace(/\s+/g, ' ')).slice(0, 10).join('')
+            }
+          }
+          if (chip.title !== chipTitle) chip.title = chipTitle
+          // 标签：编号后跟随标签文字；note 已不是现存标签时只撤标签、保留编号。
+          if (tagText === '') {
+            hideMarkerEl(entry.tagEl)
+          } else {
+            var tagEl = tagAt(entry)
+            if (tagEl.textContent !== tagText) tagEl.textContent = tagText
+            if (entry.chipWidth === 0) entry.chipWidth = chip.offsetWidth || 16
+            var tagLeft = chipLeft + entry.chipWidth + 4
+            if (tagLeft + 80 <= window.innerWidth - 4) {
+              placeMarkerEl(tagEl, Math.round(tagLeft), Math.round(chipTop), null, null)
+            } else {
+              hideMarkerEl(tagEl)
+            }
+          }
         }
         // 已经删除的批注：把它们的池元素撤下并释放（removeQuote 之后）。
         for (var m = markerEntries.length - 1; m >= 0; m--) {
@@ -1901,17 +2394,18 @@ window.__ModuleLoader__.load({
       function markerEntryFor(q) {
         var entry = markerEntryOf !== null ? markerEntryOf.get(q) : undefined
         if (entry !== undefined) return entry
-        entry = { quote: q, hls: [], used: false, chip: null }
+        entry = { quote: q, hls: [], used: false, chip: null, tagEl: null, chipWidth: 0 }
         if (markerEntryOf !== null) markerEntryOf.set(q, entry)
         markerEntries.push(entry)
         return entry
       }
 
-      function hlAt(entry, index) {
+      function hlAt(entry, index, className) {
         var el = entry.hls[index]
         if (el !== undefined) return el
         el = document.createElement('div')
-        el.className = 'dsh-ann-hl'
+        // 预览高亮用独立类名：正式标记选择器 `.dsh-ann-hl` 不会被隐藏的预览元素干扰。
+        el.className = className === 'preview' ? 'dsh-ann-hl-preview' : 'dsh-ann-hl'
         el.style.display = 'none'
         entry.hls[index] = el
         overlay.appendChild(el)
@@ -1932,6 +2426,24 @@ window.__ModuleLoader__.load({
         entry.chip = chip
         numLayer.appendChild(chip)
         return chip
+      }
+
+      /** 编号后跟随的标签文字（纯展示，与编号同层）。 */
+      function tagAt(entry) {
+        if (entry.tagEl !== null) return entry.tagEl
+        var el = document.createElement('div')
+        el.className = 'dsh-ann-num-tag'
+        el.style.display = 'none'
+        entry.tagEl = el
+        numLayer.appendChild(el)
+        return el
+      }
+
+      /** 该批注显示的标签：note 必须是当前持久化标签之一，否则视为失效。 */
+      function tagOf(q) {
+        var note = (q.note || '').trim()
+        if (note === '') return ''
+        return annotationTags.indexOf(note) !== -1 ? note : ''
       }
 
       /** 只在几何真正变化时写 style：fixed 层用 transform 定位（不触发布局），
@@ -1968,6 +2480,8 @@ window.__ModuleLoader__.load({
         entry.hls.length = 0
         if (entry.chip !== null && entry.chip.parentNode !== null) entry.chip.parentNode.removeChild(entry.chip)
         entry.chip = null
+        if (entry.tagEl !== null && entry.tagEl.parentNode !== null) entry.tagEl.parentNode.removeChild(entry.tagEl)
+        entry.tagEl = null
       }
 
       /** 标记层完全清空（批注集为空 / 插件卸载）。 */
@@ -1977,16 +2491,27 @@ window.__ModuleLoader__.load({
       }
 
       // ---------- 新增批注的选区预览高亮 ----------
-      // 点「批注」进入编辑浮窗时，用户刚选中的文字在点击工具条那一刻就已经从
-      // 浏览器选区里消失（Chromium 点击非编辑区域会清空选区）。这里用 settle 时
-      // 缓存的 Range 在标记层画一块与已保存批注相同的高亮，让用户在保存前就能
-      // 直观看到将要批注的原文；放弃（X / Esc / 点外部）或保存后由 closeToolbar
-      // 撤销，正式标记随即接管。高亮元素与正式标记共用 hlAt/placeMarkerEl。
+      // 选中文字后工具条（「+ 批注」浮窗）一出现就画出选区预览高亮，点击「标签」
+      // 展开标签面板时同样保持；点「批注」进入编辑浮窗后继续显示，让用户在保存
+      // 前就能直观看到将要批注的原文。放弃（X / Esc / 点外部）或保存后由
+      // closeToolbar 撤销，正式标记随即接管。原文已经批注过（工具条显示
+      // 「已批注」）时不再叠加预览，避免与正式高亮重复。
       var previewEntry = { hls: [] }
 
+      function previewActive() {
+        if (ui.selectionRange === null) return false
+        if (ui.mode === 'editing' && ui.editingId === null) return true
+        // 点过「标签」/「批注」按钮（previewArmed）才显示预览；工具条刚出现时不显示。
+        if (ui.mode !== 'actions' || !ui.previewArmed) return false
+        var url = (ui.source && ui.source.sourceUrl) || ''
+        return !ui.quotes.some(function (q) {
+          return q.text === ui.quote && (q.sourceUrl || '') === url
+        })
+      }
+
       function paintPreviewHighlight() {
-        var active = ui.mode === 'editing' && ui.editingId === null && ui.selectionRange !== null
-        // 平时（没有编辑中的预览）快速返回：滚动路径每帧都会走到这里。
+        var active = previewActive()
+        // 平时（没有预览）快速返回：滚动路径每帧都会走到这里。
         if (!active && previewEntry.hls.length === 0) return
         var rects = []
         if (active) {
@@ -2006,7 +2531,7 @@ window.__ModuleLoader__.load({
           for (var i = 0; i < rects.length; i++) {
             var rect = rects[i]
             if (rect.width === 0 || rect.height === 0) continue
-            placeMarkerEl(hlAt(previewEntry, shown), Math.round(rect.left), Math.round(rect.top),
+            placeMarkerEl(hlAt(previewEntry, shown, 'preview'), Math.round(rect.left), Math.round(rect.top),
               Math.round(rect.width), Math.round(rect.height))
             shown++
           }
@@ -2137,6 +2662,7 @@ window.__ModuleLoader__.load({
         ui.noteDraft = ''
         ui.error = null
         ui.editingId = null
+        ui.previewArmed = true
         // 点击工具条那一刻浏览器选区通常已被清掉：优先用实时选区，
         // 回退到 settle 时缓存的选区（键盘触发等场景实时选区仍在）。
         var range = currentSelectionRange() || ui.selectionRange
@@ -2331,6 +2857,7 @@ window.__ModuleLoader__.load({
       }
 
       function closeToolbar() {
+        tagPanelOpen = false
         if (ui.mode === 'closed') return
         clearSettle()
         ui.mode = 'closed'
@@ -2339,6 +2866,7 @@ window.__ModuleLoader__.load({
         ui.lastKey = ''
         ui.editingId = null
         ui.selectionRange = null
+        ui.previewArmed = false
         // 放弃本次批注：撤销「待批注」预览高亮（保存路径同样经过这里，
         // 随后 renderMarkers 由正式标记接管）。
         paintPreviewHighlight()

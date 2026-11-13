@@ -27,13 +27,45 @@ try {
   const quote = await page.locator('#quote').boundingBox()
   const bar = await page.locator('.dsh-ann-bar').boundingBox()
   assert.ok(bar.y >= quote.y + quote.height, '工具条位于选区下方')
+  // 工具条刚随选区出现时不显示预览（否则会和系统默认的选区渲染叠在一起）。
+  const barPreview = await page.evaluate(() => {
+    const quoteRect = document.querySelector('#quote').getBoundingClientRect()
+    const rects = Array.from(document.querySelectorAll('.dsh-ann-hl-preview'))
+      .filter(el => el.style.display !== 'none')
+      .map(el => el.getBoundingClientRect())
+    return {
+      count: rects.length,
+      coversQuote: rects.some(r => r.top < quoteRect.bottom && r.bottom > quoteRect.top
+        && r.left < quoteRect.right && r.right > quoteRect.left),
+    }
+  })
+  assert.equal(barPreview.count, 0, '工具条刚出现时不显示预览（避免与系统选区渲染重叠）')
+
+  // 点「标签」展开面板：预览出现；再点收起：预览保持（点过按钮后就有效）。
+  await page.locator('.dsh-ann-tag-toggle').click()
+  await page.locator('.dsh-ann-tags').waitFor()
+  const tagPreview = await page.evaluate(() => {
+    const quoteRect = document.querySelector('#quote').getBoundingClientRect()
+    const rects = Array.from(document.querySelectorAll('.dsh-ann-hl-preview'))
+      .filter(el => el.style.display !== 'none').map(el => el.getBoundingClientRect())
+    return {
+      count: rects.length,
+      coversQuote: rects.some(r => r.top < quoteRect.bottom && r.bottom > quoteRect.top
+        && r.left < quoteRect.right && r.right > quoteRect.left),
+    }
+  })
+  assert.equal(tagPreview.count, 1, '点「标签」展开面板后预览高亮出现')
+  assert.equal(tagPreview.coversQuote, true, '标签面板阶段的预览高亮覆盖选区')
+  await page.locator('.dsh-ann-tag-toggle').click()
+  await page.waitForTimeout(300)
+  assert.equal(await page.locator('.dsh-ann-hl-preview:visible').count(), 1, '收起标签面板后预览高亮保持')
   await page.locator('.dsh-ann-bar button').click()
   await page.locator('.dsh-ann-input').waitFor()
   // 新增需求：点「批注」进入编辑浮窗时，刚选中的原文立刻以高亮显示，方便用户
   // 确认将要批注的内容；放弃本次批注（点 X）时撤销这块预览高亮。
   const previewHighlight = await page.evaluate(() => {
     const quoteRect = document.querySelector('#quote').getBoundingClientRect()
-    const rects = Array.from(document.querySelectorAll('.dsh-ann-hl'))
+    const rects = Array.from(document.querySelectorAll('.dsh-ann-hl-preview'))
       .filter(el => el.style.display !== 'none')
       .map(el => el.getBoundingClientRect())
     return {
@@ -46,7 +78,7 @@ try {
   assert.equal(previewHighlight.coversQuote, true, '预览高亮必须覆盖选中的原文')
   await page.locator('.dsh-ann-card-head .dsh-ann-icon').click()
   assert.equal(await page.locator('.dsh-ann-card').count(), 0, 'X 关闭编辑浮窗')
-  const previewAfterCancel = await page.evaluate(() => Array.from(document.querySelectorAll('.dsh-ann-hl'))
+  const previewAfterCancel = await page.evaluate(() => Array.from(document.querySelectorAll('.dsh-ann-hl-preview'))
     .filter(el => el.style.display !== 'none').length)
   assert.equal(previewAfterCancel, 0, '放弃本次批注后撤销预览高亮')
   // 重新选中同一段原文，继续原有用例（拖动、保存后的正式高亮等）。
@@ -76,6 +108,9 @@ try {
   assert.ok(resized.x + resized.width <= 693 && resized.y + resized.height <= 643, '缩小窗口仍可操作')
   await page.locator('.dsh-ann-action').click()
   await page.locator('.dsh-ann-hl').first().waitFor()
+  await page.locator('.dsh-ann-num').first().waitFor()
+  assert.equal(await page.locator('.dsh-ann-num').first().getAttribute('title'), '拖动后不能丢失的批注',
+    '编号 hover 提示显示批注内容（前 10 个字符）')
   // 输入框覆盖到内容上（悬浮输入区）：高亮被裁掉，编号也不与输入框相交。
   await page.evaluate(() => {
     const composer = document.querySelector('[data-composer-card]')
