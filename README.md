@@ -31,7 +31,8 @@ Sidebar file annotations (DSH 0.1.6-alpha.1): select plain text, Markdown, or co
 | Select-to-annotate | Select assistant text → toolbar "Annotate" → write your note (may be empty); dismiss by clicking elsewhere or pressing Esc |
 | Numbered marker + highlight | A blue numbered marker + highlight anchored to the passage, viewport-anchored with collision avoidance, never lost when scrolled out of view |
 | Cross-turn collection | Any number of annotations accumulate across messages/turns, numbered from 1 |
-| "Annotations ×N" chip | Small chip beside the input box; hover shows every annotation, deletable individually |
+| "Annotations ×N" chip | Small chip beside the input box; hover shows every annotation, deletable individually. Automatically shifts left when the host's floating "Back to bottom" button appears |
+| Jump from the panel | Click any annotation's passage in the hover panel to scroll the conversation to where it was marked (the passage underlines and hints "Jump to the annotated passage" on hover) |
 | Enter sends with your message | Annotation block + the question in the input box are sent to the model together (the model receives the full content) |
 | Hidden in your bubble | The annotation block is removed from your bubble's DOM the moment you send (before the browser paints), leaving only the question + the chip (hover to view); historical messages self-heal after a refresh |
 | Numbered reply correspondence | A format instruction is injected into the message so the model replies `Annotation 1: …` … `Annotation N: …` one by one |
@@ -141,6 +142,8 @@ Environments without a service manager (e.g. some containers) often need **no re
 
 | Version | Highlights |
 |---|---|
+| v1.4.14 | Marker robustness: pending chip avoids the host "back to bottom" button, clip-path holes bridged independently, no per-frame clip-path rewrites, failed lookups cached per DOM version |
+| v1.4.13 | Panel jump-to-target: click an annotation's passage in the hover panel to scroll the conversation to the marked spot |
 | v1.4.x | Locale-aware: zh/en UI copy and annotation protocol block, live switch via DSH `locale` service |
 | v1.3.x | Numbered reply correspondence: format-instruction injection + hoverable `Annotation N:` chips (TreeWalker snapshot fix) |
 | v1.2.x | Hidden annotation block in bubble: MutationObserver microtask zero-flicker + polling fallback + historical-message repair |

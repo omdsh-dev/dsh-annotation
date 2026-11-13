@@ -1,0 +1,794 @@
+{
+  "meta": {
+    "script": "test/marker-scroll-perf.mjs",
+    "generatedAt": "2026-11-10T12:40:01.882Z",
+    "variants": [
+      {
+        "name": "current",
+        "path": "client.js",
+        "bytes": 158278,
+        "sha256": "db26fee6a41811577ef1aad7590f0c8d1618c442599b30ea98b57b50f6889477"
+      },
+      {
+        "name": "baseline",
+        "path": "git HEAD:client.js（旧实现，经 $env:TEMP\\client-baseline.js 注入）",
+        "bytes": 145145,
+        "sha256": "53c2d23ea1346845b2b2e6b7db8100f8a82879e43de75482009f9754e74a9039"
+      }
+    ],
+    "baselineSource": {
+      "note": "baseline 变体 = 改动前旧实现（git HEAD:client.js），用 PowerShell 重定向导出到 $env:TEMP\\client-baseline.js 后经 BASE_SCRIPT 注入；current 变体 = 测量时工作树 client.js（元素池复用/transform 定位版本）",
+      "gitBlob": "c8e0c2379d86dc72543c916e9370f1c3dbd0ff73",
+      "extractedFileSha256": "53c2d23ea1346845b2b2e6b7db8100f8a82879e43de75482009f9754e74a9039"
+    },
+    "runtime": {
+      "node": "v24.20.0",
+      "platform": "win32 x64",
+      "playwright": "1.65.0",
+      "chrome": "Chrome/156.0.8078.81",
+      "connection": "cdp",
+      "headless": true,
+      "viewport": {
+        "width": 1000,
+        "height": 800
+      }
+    },
+    "fixture": {
+      "rows": 36,
+      "paragraphsPerRow": 3,
+      "scrollFrames": 120,
+      "annotationFlow": "Range + selectionchange -> .dsh-ann-bar button -> .dsh-ann-input fill -> .dsh-ann-action",
+      "structure": "[data-conversation-scroll]（overflow-y:auto，_scrollBody）内 [data-chat-flow] 的 36 行 [data-chat-flow-kind=\"assistant-step\"]（data-chat-anchor-key=k1..k36）；fixed ._header 顶栏；fixed ._composerSeat + [data-composer-card]/[data-composer-input]",
+      "metrics": {
+        "frameInterval": "驱动 rAF 时间戳差 p50/p95/max（ms）",
+        "rafCallback": "addInitScript 包装 requestAnimationFrame 后每个回调执行耗时 p50/p95/max（ms），即插件 renderMarkers+updateChip 每帧主线程开销",
+        "longTasks": "PerformanceObserver({entryTypes:[longtask]}) 条目数与总时长",
+        "querySelectorAll": "monkey-patch Document.prototype.querySelectorAll 统计滚动期间全文档查询次数（每帧 = total/frames）",
+        "mutations": "MutationObserver 观察 overlay/numLayer 子树 childList 记录数 + addedNodes 数（滚动期间）",
+        "lag": "滚动停止后 .dsh-ann-hl 与原文 Range 的 top/left 偏差（getBoundingClientRect）；观测轮逐帧偏差"
+      }
+    }
+  },
+  "variants": {
+    "current": {
+      "client": {
+        "name": "current",
+        "path": "client.js",
+        "bytes": 158278,
+        "sha256": "db26fee6a41811577ef1aad7590f0c8d1618c442599b30ea98b57b50f6889477"
+      },
+      "runs": [
+        {
+          "n": 5,
+          "setupMs": 10576,
+          "countsAfterSetup": {
+            "quotes": 5,
+            "highlights": 5,
+            "numbers": 5,
+            "pendingStored": 5
+          },
+          "countsAfterScroll": {
+            "quotes": 5,
+            "highlights": 5,
+            "numbers": 5,
+            "pendingStored": 5
+          },
+          "scroll": {
+            "frames": {
+              "count": 120,
+              "scrollDistancePx": 3911,
+              "wallMs": 2000.2,
+              "intervalMs": {
+                "count": 119,
+                "p50": 16.7,
+                "p95": 16.8,
+                "max": 17.3,
+                "mean": 16.67
+              }
+            },
+            "rafCallbacks": {
+              "count": 120,
+              "perCallbackMs": {
+                "count": 120,
+                "p50": 0.2,
+                "p95": 0.4,
+                "max": 0.6,
+                "mean": 0.24
+              },
+              "totalMs": 29,
+              "callbacksPerFrame": 1
+            },
+            "longTasks": {
+              "count": 0,
+              "totalMs": 0,
+              "maxMs": 0
+            },
+            "mutations": {
+              "duringScroll": {
+                "batches": 0,
+                "childListRecords": 0,
+                "addedNodes": 0,
+                "overlayRecords": 0,
+                "numLayerRecords": 0
+              },
+              "recordsPerFrame": 0,
+              "addedNodesPerFrame": 0
+            },
+            "querySelectorAll": {
+              "duringScroll": {
+                "total": 62,
+                "bySelector": {
+                  "[data-chat-flow-kind]": 10,
+                  "[data-chat-flow-kind=\"assistant-step\"]": 21,
+                  "[class*=\"_composerSeat\"]": 8,
+                  "[class*=\"_header\"]": 8,
+                  "[class*=\"_scrollBody\"]": 8,
+                  ".dsh-ann-hl": 6,
+                  ".dsh-ann-num": 1
+                }
+              },
+              "perFrame": 0.52
+            },
+            "lag": {
+              "framesToCatchUp": 1,
+              "firstFrameDeviationPx": 0,
+              "settledDeviationPx": 0,
+              "samplesPx": [
+                0,
+                0
+              ],
+              "measuredPairs": 0
+            },
+            "counts": {
+              "highlights": 5,
+              "numbers": 5,
+              "quotes": 5,
+              "scrollTopAtEnd": 3911
+            }
+          },
+          "observedLag": {
+            "frames": 120,
+            "deviationPx": {
+              "count": 120,
+              "p50": 0,
+              "p95": 0,
+              "max": 33,
+              "mean": 0.28
+            },
+            "framesWithDeviation": 1,
+            "scrollTopDriftMaxPx": 0.5,
+            "note": "观测轮每帧读 DOM 会扰动帧耗时，仅用于滞后定性"
+          },
+          "warnings": [],
+          "pageErrors": []
+        },
+        {
+          "n": 20,
+          "setupMs": 22954,
+          "countsAfterSetup": {
+            "quotes": 20,
+            "highlights": 20,
+            "numbers": 20,
+            "pendingStored": 20
+          },
+          "countsAfterScroll": {
+            "quotes": 20,
+            "highlights": 20,
+            "numbers": 20,
+            "pendingStored": 20
+          },
+          "scroll": {
+            "frames": {
+              "count": 120,
+              "scrollDistancePx": 3911,
+              "wallMs": 1996.8,
+              "intervalMs": {
+                "count": 119,
+                "p50": 16.7,
+                "p95": 16.9,
+                "max": 17.8,
+                "mean": 16.66
+              }
+            },
+            "rafCallbacks": {
+              "count": 120,
+              "perCallbackMs": {
+                "count": 120,
+                "p50": 0.4,
+                "p95": 0.7,
+                "max": 1.3,
+                "mean": 0.46
+              },
+              "totalMs": 54.8,
+              "callbacksPerFrame": 1
+            },
+            "longTasks": {
+              "count": 0,
+              "totalMs": 0,
+              "maxMs": 0
+            },
+            "mutations": {
+              "duringScroll": {
+                "batches": 0,
+                "childListRecords": 0,
+                "addedNodes": 0,
+                "overlayRecords": 0,
+                "numLayerRecords": 0
+              },
+              "recordsPerFrame": 0,
+              "addedNodesPerFrame": 0
+            },
+            "querySelectorAll": {
+              "duringScroll": {
+                "total": 172,
+                "bySelector": {
+                  "[data-chat-flow-kind]": 23,
+                  "[data-chat-flow-kind=\"assistant-step\"]": 64,
+                  "[class*=\"_composerSeat\"]": 21,
+                  "[class*=\"_header\"]": 21,
+                  "[class*=\"_scrollBody\"]": 21,
+                  ".dsh-ann-hl": 21,
+                  ".dsh-ann-num": 1
+                }
+              },
+              "perFrame": 1.43
+            },
+            "lag": {
+              "framesToCatchUp": 1,
+              "firstFrameDeviationPx": 0,
+              "settledDeviationPx": 0,
+              "samplesPx": [
+                0,
+                0
+              ],
+              "measuredPairs": 0
+            },
+            "counts": {
+              "highlights": 20,
+              "numbers": 20,
+              "quotes": 20,
+              "scrollTopAtEnd": 3911
+            }
+          },
+          "observedLag": {
+            "frames": 120,
+            "deviationPx": {
+              "count": 120,
+              "p50": 0,
+              "p95": 0,
+              "max": 33,
+              "mean": 0.28
+            },
+            "framesWithDeviation": 1,
+            "scrollTopDriftMaxPx": 0.5,
+            "note": "观测轮每帧读 DOM 会扰动帧耗时，仅用于滞后定性"
+          },
+          "warnings": [],
+          "pageErrors": []
+        },
+        {
+          "n": 50,
+          "setupMs": 47207,
+          "countsAfterSetup": {
+            "quotes": 50,
+            "highlights": 50,
+            "numbers": 50,
+            "pendingStored": 50
+          },
+          "countsAfterScroll": {
+            "quotes": 50,
+            "highlights": 50,
+            "numbers": 50,
+            "pendingStored": 50
+          },
+          "scroll": {
+            "frames": {
+              "count": 120,
+              "scrollDistancePx": 3911,
+              "wallMs": 2000,
+              "intervalMs": {
+                "count": 119,
+                "p50": 16.7,
+                "p95": 17,
+                "max": 17.5,
+                "mean": 16.66
+              }
+            },
+            "rafCallbacks": {
+              "count": 120,
+              "perCallbackMs": {
+                "count": 120,
+                "p50": 0.8,
+                "p95": 1.6,
+                "max": 2.8,
+                "mean": 0.91
+              },
+              "totalMs": 109.3,
+              "callbacksPerFrame": 1
+            },
+            "longTasks": {
+              "count": 0,
+              "totalMs": 0,
+              "maxMs": 0
+            },
+            "mutations": {
+              "duringScroll": {
+                "batches": 0,
+                "childListRecords": 0,
+                "addedNodes": 0,
+                "overlayRecords": 0,
+                "numLayerRecords": 0
+              },
+              "recordsPerFrame": 0,
+              "addedNodesPerFrame": 0
+            },
+            "querySelectorAll": {
+              "duringScroll": {
+                "total": 382,
+                "bySelector": {
+                  "[data-chat-flow-kind]": 47,
+                  "[data-chat-flow-kind=\"assistant-step\"]": 148,
+                  "[class*=\"_composerSeat\"]": 45,
+                  "[class*=\"_header\"]": 45,
+                  "[class*=\"_scrollBody\"]": 45,
+                  ".dsh-ann-hl": 51,
+                  ".dsh-ann-num": 1
+                }
+              },
+              "perFrame": 3.18
+            },
+            "lag": {
+              "framesToCatchUp": 1,
+              "firstFrameDeviationPx": 33,
+              "settledDeviationPx": 0,
+              "samplesPx": [
+                33,
+                0
+              ],
+              "measuredPairs": 4
+            },
+            "counts": {
+              "highlights": 50,
+              "numbers": 50,
+              "quotes": 50,
+              "scrollTopAtEnd": 3911
+            }
+          },
+          "observedLag": {
+            "frames": 120,
+            "deviationPx": {
+              "count": 120,
+              "p50": 0,
+              "p95": 0,
+              "max": 33,
+              "mean": 0.28
+            },
+            "framesWithDeviation": 1,
+            "scrollTopDriftMaxPx": 0.5,
+            "note": "观测轮每帧读 DOM 会扰动帧耗时，仅用于滞后定性"
+          },
+          "warnings": [],
+          "pageErrors": []
+        }
+      ]
+    },
+    "baseline": {
+      "client": {
+        "name": "baseline",
+        "path": "git HEAD:client.js（旧实现，经 $env:TEMP\\client-baseline.js 注入）",
+        "bytes": 145145,
+        "sha256": "53c2d23ea1346845b2b2e6b7db8100f8a82879e43de75482009f9754e74a9039"
+      },
+      "runs": [
+        {
+          "n": 5,
+          "setupMs": 10545,
+          "countsAfterSetup": {
+            "quotes": 5,
+            "highlights": 5,
+            "numbers": 2,
+            "pendingStored": 5
+          },
+          "countsAfterScroll": {
+            "quotes": 5,
+            "highlights": 5,
+            "numbers": 0,
+            "pendingStored": 5
+          },
+          "scroll": {
+            "frames": {
+              "count": 120,
+              "scrollDistancePx": 3911,
+              "wallMs": 2016.9,
+              "intervalMs": {
+                "count": 119,
+                "p50": 16.7,
+                "p95": 16.8,
+                "max": 33.4,
+                "mean": 16.81
+              }
+            },
+            "rafCallbacks": {
+              "count": 120,
+              "perCallbackMs": {
+                "count": 120,
+                "p50": 0.6,
+                "p95": 1.1,
+                "max": 3.6,
+                "mean": 0.66
+              },
+              "totalMs": 79.3,
+              "callbacksPerFrame": 1
+            },
+            "longTasks": {
+              "count": 0,
+              "totalMs": 0,
+              "maxMs": 0
+            },
+            "mutations": {
+              "duringScroll": {
+                "batches": 119,
+                "childListRecords": 761,
+                "addedNodes": 627,
+                "overlayRecords": 714,
+                "numLayerRecords": 47
+              },
+              "recordsPerFrame": 6.34,
+              "addedNodesPerFrame": 5.23
+            },
+            "querySelectorAll": {
+              "duringScroll": {
+                "total": 4193,
+                "bySelector": {
+                  "[data-chat-flow-kind]": 10,
+                  "[data-chat-flow-kind=\"assistant-step\"]": 21,
+                  "[class*=\"_composerSeat\"]": 1468,
+                  "[class*=\"_header\"]": 1468,
+                  "[class*=\"_scrollBody\"]": 1219,
+                  ".dsh-ann-hl": 6,
+                  ".dsh-ann-num": 1
+                }
+              },
+              "perFrame": 34.94
+            },
+            "lag": {
+              "framesToCatchUp": 1,
+              "firstFrameDeviationPx": 0,
+              "settledDeviationPx": 0,
+              "samplesPx": [
+                0,
+                0
+              ],
+              "measuredPairs": 0
+            },
+            "counts": {
+              "highlights": 5,
+              "numbers": 0,
+              "quotes": 5,
+              "scrollTopAtEnd": 3911
+            }
+          },
+          "observedLag": {
+            "frames": 120,
+            "deviationPx": {
+              "count": 120,
+              "p50": 0,
+              "p95": 0,
+              "max": 33,
+              "mean": 0.28
+            },
+            "framesWithDeviation": 1,
+            "scrollTopDriftMaxPx": 0.5,
+            "note": "观测轮每帧读 DOM 会扰动帧耗时，仅用于滞后定性"
+          },
+          "warnings": [],
+          "pageErrors": []
+        },
+        {
+          "n": 20,
+          "setupMs": 22891,
+          "countsAfterSetup": {
+            "quotes": 20,
+            "highlights": 20,
+            "numbers": 2,
+            "pendingStored": 20
+          },
+          "countsAfterScroll": {
+            "quotes": 20,
+            "highlights": 20,
+            "numbers": 0,
+            "pendingStored": 20
+          },
+          "scroll": {
+            "frames": {
+              "count": 120,
+              "scrollDistancePx": 3911,
+              "wallMs": 2000.1,
+              "intervalMs": {
+                "count": 119,
+                "p50": 16.7,
+                "p95": 17.4,
+                "max": 17.9,
+                "mean": 16.67
+              }
+            },
+            "rafCallbacks": {
+              "count": 120,
+              "perCallbackMs": {
+                "count": 120,
+                "p50": 1.4,
+                "p95": 3.1,
+                "max": 6.4,
+                "mean": 1.7
+              },
+              "totalMs": 203.9,
+              "callbacksPerFrame": 1
+            },
+            "longTasks": {
+              "count": 0,
+              "totalMs": 0,
+              "maxMs": 0
+            },
+            "mutations": {
+              "duringScroll": {
+                "batches": 119,
+                "childListRecords": 2860,
+                "addedNodes": 2671,
+                "overlayRecords": 2499,
+                "numLayerRecords": 361
+              },
+              "recordsPerFrame": 23.83,
+              "addedNodesPerFrame": 22.26
+            },
+            "querySelectorAll": {
+              "duringScroll": {
+                "total": 16204,
+                "bySelector": {
+                  "[data-chat-flow-kind]": 23,
+                  "[data-chat-flow-kind=\"assistant-step\"]": 64,
+                  "[class*=\"_composerSeat\"]": 5458,
+                  "[class*=\"_header\"]": 5458,
+                  "[class*=\"_scrollBody\"]": 5179,
+                  ".dsh-ann-hl": 21,
+                  ".dsh-ann-num": 1
+                }
+              },
+              "perFrame": 135.03
+            },
+            "lag": {
+              "framesToCatchUp": 1,
+              "firstFrameDeviationPx": 0,
+              "settledDeviationPx": 0,
+              "samplesPx": [
+                0,
+                0
+              ],
+              "measuredPairs": 0
+            },
+            "counts": {
+              "highlights": 20,
+              "numbers": 0,
+              "quotes": 20,
+              "scrollTopAtEnd": 3911
+            }
+          },
+          "observedLag": {
+            "frames": 120,
+            "deviationPx": {
+              "count": 120,
+              "p50": 0,
+              "p95": 0,
+              "max": 33,
+              "mean": 0.28
+            },
+            "framesWithDeviation": 1,
+            "scrollTopDriftMaxPx": 0.5,
+            "note": "观测轮每帧读 DOM 会扰动帧耗时，仅用于滞后定性"
+          },
+          "warnings": [],
+          "pageErrors": []
+        },
+        {
+          "n": 50,
+          "setupMs": 47656,
+          "countsAfterSetup": {
+            "quotes": 50,
+            "highlights": 50,
+            "numbers": 7,
+            "pendingStored": 50
+          },
+          "countsAfterScroll": {
+            "quotes": 50,
+            "highlights": 50,
+            "numbers": 3,
+            "pendingStored": 50
+          },
+          "scroll": {
+            "frames": {
+              "count": 120,
+              "scrollDistancePx": 3911,
+              "wallMs": 2000.1,
+              "intervalMs": {
+                "count": 119,
+                "p50": 16.7,
+                "p95": 16.8,
+                "max": 17.3,
+                "mean": 16.67
+              }
+            },
+            "rafCallbacks": {
+              "count": 120,
+              "perCallbackMs": {
+                "count": 120,
+                "p50": 6.7,
+                "p95": 7.7,
+                "max": 10.3,
+                "mean": 5.9
+              },
+              "totalMs": 708.6,
+              "callbacksPerFrame": 1
+            },
+            "longTasks": {
+              "count": 0,
+              "totalMs": 0,
+              "maxMs": 0
+            },
+            "mutations": {
+              "duringScroll": {
+                "batches": 119,
+                "childListRecords": 6929,
+                "addedNodes": 6691,
+                "overlayRecords": 6069,
+                "numLayerRecords": 860
+              },
+              "recordsPerFrame": 57.74,
+              "addedNodesPerFrame": 55.76
+            },
+            "querySelectorAll": {
+              "duringScroll": {
+                "total": 44159,
+                "bySelector": {
+                  "[data-chat-flow-kind]": 47,
+                  "[data-chat-flow-kind=\"assistant-step\"]": 148,
+                  "[class*=\"_composerSeat\"]": 14750,
+                  "[class*=\"_header\"]": 14750,
+                  "[class*=\"_scrollBody\"]": 14412,
+                  ".dsh-ann-hl": 51,
+                  ".dsh-ann-num": 1
+                }
+              },
+              "perFrame": 367.99
+            },
+            "lag": {
+              "framesToCatchUp": 1,
+              "firstFrameDeviationPx": 33,
+              "settledDeviationPx": 0,
+              "samplesPx": [
+                33,
+                0
+              ],
+              "measuredPairs": 4
+            },
+            "counts": {
+              "highlights": 50,
+              "numbers": 3,
+              "quotes": 50,
+              "scrollTopAtEnd": 3911
+            }
+          },
+          "observedLag": {
+            "frames": 120,
+            "deviationPx": {
+              "count": 120,
+              "p50": 0,
+              "p95": 0,
+              "max": 33,
+              "mean": 0.28
+            },
+            "framesWithDeviation": 1,
+            "scrollTopDriftMaxPx": 0.5,
+            "note": "观测轮每帧读 DOM 会扰动帧耗时，仅用于滞后定性"
+          },
+          "warnings": [],
+          "pageErrors": []
+        }
+      ]
+    }
+  },
+  "comparison": [
+    {
+      "n": 5,
+      "baseline": {
+        "frameIntervalP50Ms": 16.7,
+        "rafCallbackP50Ms": 0.6,
+        "rafCallbackP95Ms": 1.1,
+        "longTaskCount": 0,
+        "querySelectorAllPerFrame": 34.94,
+        "mutationRecordsPerFrame": 6.34,
+        "addedNodesPerFrame": 5.23,
+        "framesToCatchUp": 1,
+        "firstFrameDeviationPx": 0
+      },
+      "current": {
+        "frameIntervalP50Ms": 16.7,
+        "rafCallbackP50Ms": 0.2,
+        "rafCallbackP95Ms": 0.4,
+        "longTaskCount": 0,
+        "querySelectorAllPerFrame": 0.52,
+        "mutationRecordsPerFrame": 0,
+        "addedNodesPerFrame": 0,
+        "framesToCatchUp": 1,
+        "firstFrameDeviationPx": 0
+      },
+      "delta": {
+        "rafCallbackP95Ms": -0.7,
+        "querySelectorAllPerFrame": -34.42,
+        "mutationRecordsPerFrame": -6.34,
+        "addedNodesPerFrame": -5.23
+      }
+    },
+    {
+      "n": 20,
+      "baseline": {
+        "frameIntervalP50Ms": 16.7,
+        "rafCallbackP50Ms": 1.4,
+        "rafCallbackP95Ms": 3.1,
+        "longTaskCount": 0,
+        "querySelectorAllPerFrame": 135.03,
+        "mutationRecordsPerFrame": 23.83,
+        "addedNodesPerFrame": 22.26,
+        "framesToCatchUp": 1,
+        "firstFrameDeviationPx": 0
+      },
+      "current": {
+        "frameIntervalP50Ms": 16.7,
+        "rafCallbackP50Ms": 0.4,
+        "rafCallbackP95Ms": 0.7,
+        "longTaskCount": 0,
+        "querySelectorAllPerFrame": 1.43,
+        "mutationRecordsPerFrame": 0,
+        "addedNodesPerFrame": 0,
+        "framesToCatchUp": 1,
+        "firstFrameDeviationPx": 0
+      },
+      "delta": {
+        "rafCallbackP95Ms": -2.4,
+        "querySelectorAllPerFrame": -133.6,
+        "mutationRecordsPerFrame": -23.83,
+        "addedNodesPerFrame": -22.26
+      }
+    },
+    {
+      "n": 50,
+      "baseline": {
+        "frameIntervalP50Ms": 16.7,
+        "rafCallbackP50Ms": 6.7,
+        "rafCallbackP95Ms": 7.7,
+        "longTaskCount": 0,
+        "querySelectorAllPerFrame": 367.99,
+        "mutationRecordsPerFrame": 57.74,
+        "addedNodesPerFrame": 55.76,
+        "framesToCatchUp": 1,
+        "firstFrameDeviationPx": 33
+      },
+      "current": {
+        "frameIntervalP50Ms": 16.7,
+        "rafCallbackP50Ms": 0.8,
+        "rafCallbackP95Ms": 1.6,
+        "longTaskCount": 0,
+        "querySelectorAllPerFrame": 3.18,
+        "mutationRecordsPerFrame": 0,
+        "addedNodesPerFrame": 0,
+        "framesToCatchUp": 1,
+        "firstFrameDeviationPx": 33
+      },
+      "delta": {
+        "rafCallbackP95Ms": -6.1,
+        "querySelectorAllPerFrame": -364.81,
+        "mutationRecordsPerFrame": -57.74,
+        "addedNodesPerFrame": -55.76
+      }
+    }
+  ],
+  "warnings": []
+}
