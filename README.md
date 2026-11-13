@@ -28,7 +28,7 @@ Sidebar file annotations (DSH 0.1.6-alpha.1): select plain text, Markdown, or co
 
 | Feature | Description |
 |---|---|
-| Select-to-annotate | Select assistant text → toolbar "Annotate" → write your note (may be empty); dismiss by clicking elsewhere or pressing Esc |
+| Select-to-annotate | Select assistant text → toolbar "Annotate" → write your note (may be empty); dismiss by clicking elsewhere or pressing Esc. The selected passage is highlighted as soon as the editor opens, and the highlight reverts when the annotation is dismissed |
 | Numbered marker + highlight | A blue numbered marker + highlight anchored to the passage, viewport-anchored with collision avoidance, never lost when scrolled out of view |
 | Cross-turn collection | Any number of annotations accumulate across messages/turns, numbered from 1 |
 | "Annotations ×N" chip | Small chip beside the input box; hover shows every annotation, deletable individually. Automatically shifts left when the host's floating "Back to bottom" button appears |

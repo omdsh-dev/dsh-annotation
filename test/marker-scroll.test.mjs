@@ -112,7 +112,7 @@ function makeHarness () {
   })
   const overlay = stubElement(overlayStyle)
   const numLayer = stubElement()
-  const ui = { quotes: [] }
+  const ui = { quotes: [], mode: 'closed', editingId: null }
   const windowStub = { innerWidth: 1000, innerHeight: 800 }
 
   let locateCalls = 0
@@ -149,7 +149,7 @@ function makeHarness () {
     'conversationColumnRange', 'hostHeaderRects', 'hostComposerRects', 'markersSignature',
     'clipWithHoles', 'quoteRects', 'locateQuoteCached', 'sourceAlive', 'rangeAlive',
     'markerEntryFor', 'hlAt', 'chipAt', 'placeMarkerEl', 'hideMarkerEl',
-    'clearMarkerEls', 'clearMarkers', 'renderMarkers', 'buildMarkers',
+    'clearMarkerEls', 'clearMarkers', 'paintPreviewHighlight', 'renderMarkers', 'buildMarkers',
   ].map(functionSource).filter((text) => text !== '').join('\n')
 
   const factory = Function(
@@ -157,6 +157,7 @@ function makeHarness () {
     'locateQuote', 'openEditorFor', 'getComputedStyle', 'Element', 'DOMRect',
     'documentSourceOf',
     `var markerEntries = []
+     var previewEntry = { hls: [] }
      var markerEntryOf = new WeakMap()
      var locateCache = new WeakMap()
      var markerHoles = null
@@ -324,6 +325,46 @@ test('批注增删：池元素随批注集创建/移除，不泄漏也不残留'
   assert.equal(h.entries().length, 0)
 })
 
+test('新增批注的预览高亮：按编辑状态出现/撤销，与已保存批注共用同一标记层', () => {
+  const h = makeHarness()
+  // 模拟 settle 时缓存的选区 Range（跨两行）。
+  const preview = {
+    startContainer: { isConnected: true },
+    getClientRects: () => [rect(100, 120, 200, 20), rect(100, 180, 120, 20)],
+  }
+  h.ui.mode = 'editing'
+  h.ui.selectionRange = preview
+  h.render()
+  assert.equal(h.overlay.children.length, 2, '编辑浮窗打开时按选区矩形画两块预览高亮')
+  assert.equal(h.overlay.children[0].className, 'dsh-ann-hl')
+  assert.equal(h.overlay.children[0].style.transform, 'translate(100px,120px)')
+  assert.equal(h.overlay.children[1].style.transform, 'translate(100px,180px)')
+
+  // 正文移动（滚动/布局变化）后预览高亮跟随 Range 的新位置。
+  const moved = {
+    startContainer: { isConnected: true },
+    getClientRects: () => [rect(100, 80, 200, 20), rect(100, 140, 120, 20)],
+  }
+  h.ui.selectionRange = moved
+  h.render()
+  assert.equal(h.overlay.children.length, 2, '预览元素池复用，不随滚动增长')
+  assert.equal(h.overlay.children[0].style.transform, 'translate(100px,80px)', '滚动后预览高亮跟随原文')
+
+  // 已有正式批注 + 预览高亮共存，元素池互不干扰。
+  h.setQuotes([h.newQuote('alpha', 300)])
+  h.render()
+  assert.equal(h.overlay.children.length, 3, '正式高亮与预览高亮各占自己的池元素')
+  const kept = h.overlay.children.slice(0, 2)
+
+  // 撤销预览（放弃/保存）：预览元素就地隐藏，正式标记保留。
+  h.ui.selectionRange = null
+  h.render()
+  assert.equal(h.overlay.children[0].style.display, 'none', '撤销后预览高亮隐藏')
+  assert.equal(h.overlay.children[1].style.display, 'none')
+  assert.notEqual(h.overlay.children[2].style.display, 'none', '正式批注高亮不受撤销影响')
+  assert.equal(h.overlay.children[0], kept[0], '隐藏的预览元素留在池里供下次复用')
+})
+
 test('文件批注：缓存命中前校验来源文件，切文件后旧标记不再继承', () => {
   const h = makeHarness()
   const q = h.newQuote('alpha', 120)
@@ -436,4 +477,38 @@ test('locateQuoteCached 用 rangeAlive + sourceAlive 快路径，滚动不再重
   const build = sliceBetween('function buildMarkers()', '// ---------- 标记元素池 ----------')
   assert.match(build, /locateQuoteCached\(q\)/, 'buildMarkers 只走缓存版定位')
   assert.doesNotMatch(build, /locateQuote\(/, 'buildMarkers 不得直接调用慢路径')
+})
+
+test('新增批注预览高亮：settle 缓存 Range、进入编辑即高亮、放弃时撤销', () => {
+  const settle = sliceBetween('function onSelection()', 'function clearSettle()')
+  assert.match(settle, /ui\.selectionRange = r\.cloneRange\(\)/,
+    'settle 时缓存选区 Range（点击工具条后浏览器会清掉选区）')
+
+  const enter = sliceBetween('function enterEditing()', 'function openEditorFor(')
+  assert.match(enter, /currentSelectionRange\(\) \|\| ui\.selectionRange/,
+    '进入编辑时优先实时选区，回退到 settle 缓存的 Range')
+  assert.match(enter, /ui\.selectionRange = range/, '缓存的 Range 直接作为预览高亮的 Range')
+  assert.match(enter, /paintPreviewHighlight\(\)/, '进入编辑浮窗立即绘制预览高亮')
+  assert.match(enter, /captureAnchor\(ui\.quote, range\)/, '预览高亮与保存锚点共用同一个 Range')
+
+  const close = sliceBetween('function closeToolbar()', '// ---------- 输入框旁的批注标签')
+  assert.match(close, /ui\.selectionRange = null/, '关闭后不残留上一次的选区 Range')
+  assert.match(close, /paintPreviewHighlight\(\)/, '放弃本次批注时撤销预览高亮')
+
+  const update = sliceBetween('function paintPreviewHighlight()', 'function locateQuoteCached(')
+  assert.match(update, /ui\.mode === 'editing' && ui\.editingId === null && ui\.selectionRange !== null/,
+    '只在新增批注的编辑状态下显示预览高亮')
+  assert.match(update, /if \(!active && previewEntry\.hls\.length === 0\) return/,
+    '没有预览时快速返回：滚动路径每帧都会调用')
+  assert.match(update, /quoteRects\(range, ui\.source \|\| \{\}\)/,
+    '预览高亮与正式标记共用选区矩形计算（含文件预览裁剪）')
+  assert.match(update, /hlAt\(previewEntry, shown\)/, '预览高亮复用正式标记的元素池')
+  assert.match(update, /hideMarkerEl\(previewEntry\.hls\[j\]\)/, '撤销后就地隐藏而不是重建')
+
+  const layout = sliceBetween('function onLayoutChange()', "window.addEventListener('scroll', onLayoutChange, true)")
+  assert.match(layout, /ui\.quotes\.length > 0 \|\| \(ui\.mode === 'editing' && ui\.selectionRange !== null\)/,
+    '只有预览、还没保存任何批注时滚动也要刷新标记层')
+
+  const open = sliceBetween('function openEditorFor(', 'function buildBlock(')
+  assert.match(open, /ui\.selectionRange = null/, '编辑已有批注不显示预览高亮（它本来就有正式高亮）')
 })

@@ -28,6 +28,35 @@ try {
   const bar = await page.locator('.dsh-ann-bar').boundingBox()
   assert.ok(bar.y >= quote.y + quote.height, '工具条位于选区下方')
   await page.locator('.dsh-ann-bar button').click()
+  await page.locator('.dsh-ann-input').waitFor()
+  // 新增需求：点「批注」进入编辑浮窗时，刚选中的原文立刻以高亮显示，方便用户
+  // 确认将要批注的内容；放弃本次批注（点 X）时撤销这块预览高亮。
+  const previewHighlight = await page.evaluate(() => {
+    const quoteRect = document.querySelector('#quote').getBoundingClientRect()
+    const rects = Array.from(document.querySelectorAll('.dsh-ann-hl'))
+      .filter(el => el.style.display !== 'none')
+      .map(el => el.getBoundingClientRect())
+    return {
+      count: rects.length,
+      coversQuote: rects.some(r => r.top < quoteRect.bottom && r.bottom > quoteRect.top
+        && r.left < quoteRect.right && r.right > quoteRect.left),
+    }
+  })
+  assert.equal(previewHighlight.count, 1, '进入编辑浮窗时选区立即变为高亮（一条预览高亮）')
+  assert.equal(previewHighlight.coversQuote, true, '预览高亮必须覆盖选中的原文')
+  await page.locator('.dsh-ann-card-head .dsh-ann-icon').click()
+  assert.equal(await page.locator('.dsh-ann-card').count(), 0, 'X 关闭编辑浮窗')
+  const previewAfterCancel = await page.evaluate(() => Array.from(document.querySelectorAll('.dsh-ann-hl'))
+    .filter(el => el.style.display !== 'none').length)
+  assert.equal(previewAfterCancel, 0, '放弃本次批注后撤销预览高亮')
+  // 重新选中同一段原文，继续原有用例（拖动、保存后的正式高亮等）。
+  await page.evaluate(() => {
+    const range = document.createRange()
+    range.selectNodeContents(document.querySelector('#quote'))
+    getSelection().removeAllRanges(); getSelection().addRange(range)
+  })
+  await page.locator('.dsh-ann-bar').waitFor()
+  await page.locator('.dsh-ann-bar button').click()
   await page.locator('.dsh-ann-input').fill('拖动后不能丢失的批注')
   assert.equal(await page.locator('.dsh-ann-card-head .dsh-ann-qdel').count(), 0, '新增批注时标题旁没有删除按钮')
   assert.equal(await page.locator('.dsh-ann-cancel').count(), 0, '编辑窗口没有取消按钮')

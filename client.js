@@ -1081,6 +1081,9 @@ window.__ModuleLoader__.load({
         busy: false,
         lastKey: '',
         pendingAnchor: null,
+        // settle 时缓存的选区 Range：点击工具条按钮的瞬间浏览器已经清掉选区。
+        // 进入编辑浮窗后它就是「待批注」预览高亮的 Range（同时用于抓保存锚点）。
+        selectionRange: null,
         el: null,
       }
 
@@ -1231,6 +1234,7 @@ window.__ModuleLoader__.load({
           var p = placeAbove(rect, 40)
           if (ui.mode === 'actions' && ui.quote === text && (ui.source && ui.source.sourceUrl) === (source && source.sourceUrl)) {
             ui.lastKey = key
+            ui.selectionRange = r.cloneRange()
             ui.pos = p
             if (ui.el !== null && ui.el.style) {
               ui.el.style.left = p.left + 'px'
@@ -1243,6 +1247,7 @@ window.__ModuleLoader__.load({
           ui.quote = text
           ui.source = source
           ui.selectionRoot = rootEl
+          ui.selectionRange = r.cloneRange()
           ui.error = null
           ui.pos = p
           render()
@@ -1272,7 +1277,8 @@ window.__ModuleLoader__.load({
         anchorRaf = true
         requestAnimationFrame(function () {
           anchorRaf = false
-          if (ui.quotes.length > 0) renderMarkers()
+          // 只有预览高亮（还没有已保存批注）时滚动也要重画标记层。
+          if (ui.quotes.length > 0 || (ui.mode === 'editing' && ui.selectionRange !== null)) renderMarkers()
           updateChip()
           if (ui.mode === 'editing' && ui.el !== null) positionEditor(ui.el, ui.pos.left, ui.pos.top)
           if (ui.mode !== 'actions' || ui.quote === '') return
@@ -1781,6 +1787,9 @@ window.__ModuleLoader__.load({
       }
 
       function buildMarkers() {
+        // 新增批注的预览高亮不属于已保存批注：quotes 为空（第一条批注还没保存）
+        // 时也要绘制，所以先于下面的空集合早退处理。
+        paintPreviewHighlight()
         // 标记元素按批注复用（元素池）：滚动时只更新 transform，不再每帧
         // 清空两层、重建全部 DOM。批注集为空时把池元素全部撤下。
         if (ui.quotes.length === 0) {
@@ -1967,6 +1976,44 @@ window.__ModuleLoader__.load({
         markerEntries.length = 0
       }
 
+      // ---------- 新增批注的选区预览高亮 ----------
+      // 点「批注」进入编辑浮窗时，用户刚选中的文字在点击工具条那一刻就已经从
+      // 浏览器选区里消失（Chromium 点击非编辑区域会清空选区）。这里用 settle 时
+      // 缓存的 Range 在标记层画一块与已保存批注相同的高亮，让用户在保存前就能
+      // 直观看到将要批注的原文；放弃（X / Esc / 点外部）或保存后由 closeToolbar
+      // 撤销，正式标记随即接管。高亮元素与正式标记共用 hlAt/placeMarkerEl。
+      var previewEntry = { hls: [] }
+
+      function paintPreviewHighlight() {
+        var active = ui.mode === 'editing' && ui.editingId === null && ui.selectionRange !== null
+        // 平时（没有编辑中的预览）快速返回：滚动路径每帧都会走到这里。
+        if (!active && previewEntry.hls.length === 0) return
+        var rects = []
+        if (active) {
+          try {
+            var range = ui.selectionRange
+            if (range.startContainer === null || !range.startContainer.isConnected) {
+              // 宿主重渲染让 Range 失效：撤下预览，保存仍走文本锚点兜底。
+              ui.selectionRange = null
+              active = false
+            } else {
+              rects = quoteRects(range, ui.source || {})
+            }
+          } catch (_) { active = false; rects = [] }
+        }
+        var shown = 0
+        if (active) {
+          for (var i = 0; i < rects.length; i++) {
+            var rect = rects[i]
+            if (rect.width === 0 || rect.height === 0) continue
+            placeMarkerEl(hlAt(previewEntry, shown), Math.round(rect.left), Math.round(rect.top),
+              Math.round(rect.width), Math.round(rect.height))
+            shown++
+          }
+        }
+        for (var j = shown; j < previewEntry.hls.length; j++) hideMarkerEl(previewEntry.hls[j])
+      }
+
       /** 定位结果缓存：DOM 内容不变时滚动只重读 rect，不再重复跑文本扫描。
        *  locateQuote 的慢路径是 O(会话文本长度) 的全量扫描，每帧每条批注一次
        *  就足以把滚动帧预算吃满（尤其是刷新后恢复、没有 live Range 的批注）。
@@ -2017,15 +2064,27 @@ window.__ModuleLoader__.load({
       }
 
       // ---------- 动作 ----------
-      function captureAnchor(text) {
+      /** 当前浏览器选区 Range；没有选区/已折叠时返回 null。
+       *  点击工具条按钮的瞬间 Chromium 会清掉页面选区，所以进入编辑浮窗后
+       *  不能只依赖实时选区——必须接受 settle 时缓存的 `ui.selectionRange`。 */
+      function currentSelectionRange() {
+        try {
+          var sel = window.getSelection()
+          if (sel === null || sel.isCollapsed || sel.rangeCount === 0) return null
+          return sel.getRangeAt(0)
+        } catch (_) { return null }
+      }
+
+      function captureAnchor(text, selectedRange) {
         var anchor = {
           range: null, seqKey: '', rowHead: '', textOffset: -1,
           ctxBefore: '', ctxAfter: '',
         }
         try {
-          var sel = window.getSelection()
-          if (sel === null || sel.isCollapsed || sel.rangeCount === 0) return anchor
-          var live = sel.getRangeAt(0)
+          var live = selectedRange !== undefined && selectedRange !== null
+            ? selectedRange
+            : currentSelectionRange()
+          if (live === null) return anchor
           var liveText = live.toString()
           // 选区文本与 settle 快照一致才持有 live range；不一致（选区微变、DOM
           // 被批注芯片等装饰改写）时也绝不返回全空锚——尽力抓行级锚点
@@ -2078,8 +2137,16 @@ window.__ModuleLoader__.load({
         ui.noteDraft = ''
         ui.error = null
         ui.editingId = null
-        ui.pendingAnchor = captureAnchor(ui.quote)
+        // 点击工具条那一刻浏览器选区通常已被清掉：优先用实时选区，
+        // 回退到 settle 时缓存的选区（键盘触发等场景实时选区仍在）。
+        var range = currentSelectionRange() || ui.selectionRange
+        // 这个 Range 同时用于预览高亮与保存锚点，保存后的正式标记位置才和
+        // 预览完全一致。
+        ui.selectionRange = range
+        ui.pendingAnchor = captureAnchor(ui.quote, range)
         render()
+        // 选区立即变为高亮，用户保存前就能直观看到将要批注的内容。
+        paintPreviewHighlight()
       }
 
       /** 点击角标数字 → 重新打开该批注的编辑面板（预填批注内容，可修改后保存）。 */
@@ -2091,6 +2158,8 @@ window.__ModuleLoader__.load({
         ui.error = null
         ui.editingId = q.id
         ui.pendingAnchor = null
+        // 编辑已有批注：这条原文本来就有正式高亮，不需要「待批注」预览。
+        ui.selectionRange = null
         var range = locateQuote(q.text, q)
         var rect = range !== null ? range.getBoundingClientRect() : null
         ui.pos = rect !== null && rect.width > 0
@@ -2269,6 +2338,10 @@ window.__ModuleLoader__.load({
         ui.busy = false
         ui.lastKey = ''
         ui.editingId = null
+        ui.selectionRange = null
+        // 放弃本次批注：撤销「待批注」预览高亮（保存路径同样经过这里，
+        // 随后 renderMarkers 由正式标记接管）。
+        paintPreviewHighlight()
         render()
       }
 
