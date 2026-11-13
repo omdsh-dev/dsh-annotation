@@ -104,12 +104,15 @@ window.__ModuleLoader__.load({
         '.dsh-ann-card-title { font-size: 13px; font-weight: 600;',
         '  color: var(--dsw-alias-label-primary); }',
         '.dsh-ann-card-headmain { display: flex; align-items: center; gap: 2px; min-width: 0; }',
+        // 引用区只显示三行：overflow 的裁剪区是 padding box，底部内边距必须为 0，
+        // 否则第四行会从 padding-bottom 里露出一截；max-height 精确等于顶部内边距
+        // 6px + 三行行高 12×1.55×3 = 55.8px，即 61.8px。
         '.dsh-ann-quote { font-size: 12px; line-height: 1.55;',
         '  color: var(--dsw-alias-label-tertiary);',
         '  border-left: 2px solid var(--dsw-alias-border-inverted);',
         '  background: var(--dsw-alias-bg-layer-1);',
-        '  border-radius: 0 8px 8px 0; padding: 6px 10px; margin-bottom: 8px;',
-        '  max-height: 72px; overflow: hidden; word-break: break-word;',
+        '  border-radius: 0 8px 8px 0; padding: 6px 10px 0; margin-bottom: 8px;',
+        '  max-height: 61.8px; overflow: hidden; word-break: break-word;',
         '  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }',
         '.dsh-ann-quotes { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px;',
         '  max-height: 150px; overflow-y: auto; }',
@@ -1323,8 +1326,20 @@ window.__ModuleLoader__.load({
         }
         return false
       }
+      // 宿主 DOM 结构/文本变化的序号：批注定位失败后，只有 DOM 再变化（加载更早、
+      // 消息重渲染等）才值得重跑全量文本扫描；滚动本身不改 DOM，不该每帧重扫长会话。
+      var domMutationSeq = 0
       var observer = new MutationObserver(function (mutations) {
         if (!mutationRelevant(mutations)) return
+        domMutationSeq++
+        // 结构变化（消息行插入/移除、视图重建）会让宿主几何缓存里的元素
+        // 引用失效；characterData/attributes 批次不改变元素集合，不失效缓存，
+        // 否则流式期间每个 token 都会把每帧查询重新做一遍。
+        var hasRowInsert = false
+        for (var i = 0; i < mutations.length; i++) {
+          if (mutations[i].type === 'childList') { hasRowInsert = true; break }
+        }
+        if (hasRowInsert) invalidateHostLocalRects()
         onLayoutChange()
         // 只有「消息行插入」批次才同步执行气泡装饰（隐藏批注块 + 贴标签）：
         // MutationObserver 回调在微任务阶段运行，早于浏览器绘制，
@@ -1334,10 +1349,6 @@ window.__ModuleLoader__.load({
         // 就携带完整批注块，逐一触发全文档扫描（decorateAll 是 querySelectorAll +
         // 每行子树查询 + textContent，成本随会话长度线性增长）会在长会话上白白
         // 烧主线程；漏网场景由下方 1s 兜底轮询覆盖。
-        var hasRowInsert = false
-        for (var i = 0; i < mutations.length; i++) {
-          if (mutations[i].type === 'childList') { hasRowInsert = true; break }
-        }
         if (hasRowInsert) {
           scheduleDecorateAll()
           return
@@ -1582,22 +1593,11 @@ window.__ModuleLoader__.load({
 
       // ---------- 批注标记 ----------
       var markersSig = null
+      /** 遮挡区（输入框 + 会话头部）签名：只有它变化时才需要重写 clipPath。
+       *  每帧无条件写 clipPath 会让整个 fixed 标记层重新裁剪/重绘；而高亮与
+       *  编号的位置变化已经由元素池增量更新，不再需要靠签名触发全量重建。 */
       function markersSignature(blockers) {
         var parts = []
-        for (var i = 0; i < ui.quotes.length; i++) {
-          var q = ui.quotes[i]
-          var range = locateQuote(q.text, q)
-          if (range === null) { parts.push(q.id + ':gone'); continue }
-          var rects = quoteRects(range, q)
-          for (var c = 0; c < rects.length; c++) {
-            var r = rects[c]
-            if (r.width === 0 || r.height === 0) continue
-            parts.push(q.id + ':' + Math.round(r.left) + ',' + Math.round(r.top) + ',' + Math.round(r.width) + ',' + Math.round(r.height))
-          }
-          if (rects.length > 0) parts.push(q.id + ':chip')
-        }
-        // 遮挡区（输入框 + 会话头部）也进签名：它们改变时编号必须重走
-        // 让位/隐藏，否则旧位置会被裁剪成半截残影。
         for (var b = 0; b < blockers.length; b++) {
           var br = blockers[b]
           parts.push('b:' + Math.round(br.left) + ',' + Math.round(br.top) + ',' + Math.round(br.width) + ',' + Math.round(br.height))
@@ -1607,15 +1607,42 @@ window.__ModuleLoader__.load({
 
       /** 按 CSS Modules local 名取宿主元素的可见矩形：类名形如 `wSkVaW_header`
        *  （哈希前缀随版本变），故认「以 _<local> 收尾的 class token」，
-       *  headerActions / composerSeatInner 这类同前缀兄弟名不会被误认。 */
-      function hostLocalRects(local) {
-        var out = []
+       *  headerActions / composerSeatInner 这类同前缀兄弟名不会被误认。
+       *
+       *  性能：querySelectorAll + 逐元素正则只在缓存失效时执行一次，滚动与
+       *  尺寸变化只重读 getBoundingClientRect（廉价）。滚动路径每帧都要问
+       *  宿主几何（header / composerSeat / scrollBody），一次全文档查询 × 4
+       *  个 local 就会把每帧预算吃光——这正是批注一多就卡顿的来源之一。
+       *  缓存挂在函数自身的静态属性上，保持函数自包含（测试可单独求值）。 */
+      function hostLocalEls(local) {
+        var cache = hostLocalEls.cache || (hostLocalEls.cache = Object.create(null))
+        var els = cache[local]
+        if (els !== undefined) return els
         var found = document.querySelectorAll('[class*="_' + local + '"]')
         var re = new RegExp('(^|\\s)[^\\s]*_' + local + '(\\s|$)')
+        els = []
         for (var i = 0; i < found.length; i++) {
           var cls = found[i].getAttribute('class') || ''
           if (!re.test(cls)) continue
-          var r = found[i].getBoundingClientRect()
+          els.push(found[i])
+        }
+        cache[local] = els
+        return els
+      }
+
+      /** DOM 结构变化（消息行增删、视图重建）后清空宿主几何缓存。 */
+      function invalidateHostLocalRects() {
+        hostLocalEls.cache = null
+        conversationViewEl.cache = undefined
+        composerCardEl.cache = undefined
+        composerSeatOf.cache = undefined
+      }
+
+      function hostLocalRects(local) {
+        var els = hostLocalEls(local)
+        var out = []
+        for (var i = 0; i < els.length; i++) {
+          var r = els[i].getBoundingClientRect()
           if (r.width <= 0 || r.height <= 0) continue
           if (r.bottom <= 0 || r.top >= window.innerHeight) continue
           out.push(r)
@@ -1623,12 +1650,36 @@ window.__ModuleLoader__.load({
         return out
       }
 
+      /** 宿主「回到底部」按钮（会话滚动区右下方的 34px 圆形按钮，CSS Modules
+       *  local 名 `toBottom`，只在正文滚离底部时渲染）的可见矩形。待发送胶囊
+       *  就贴在同一水平带（输入卡片上方右侧），不避让会和它叠在一起。
+       *  宿主可能在按钮的显隐切换里复用元素（只改样式），故这里按「当前可见
+       *  矩形」判断，而不是缓存元素是否存在。 */
+      function toBottomRects() {
+        return hostLocalRects('toBottom')
+      }
+
+      /** 会话滚动容器（data 属性跨版本稳定）与输入卡片的元素引用缓存。 */
+      function conversationViewEl() {
+        if (conversationViewEl.cache === undefined) {
+          try { conversationViewEl.cache = document.querySelector('[data-conversation-scroll]') } catch (_) { conversationViewEl.cache = null }
+        }
+        return conversationViewEl.cache
+      }
+
+      function composerCardEl() {
+        if (composerCardEl.cache === undefined) {
+          composerCardEl.cache = document.querySelector('[data-composer-card]')
+        }
+        return composerCardEl.cache
+      }
+
       /** 会话列的可视范围（x 轴 + 上沿）：优先 `data-conversation-scroll`（#63，
        *  data 属性跨版本稳定，已核实 0.2.0-rc.2 仍在 ui-chat/ChatView.tsx），
        *  找不到时退回 scrollBody 类名启发式取并集。侧边栏文件预览的批注与
        *  顶栏横带在 x 轴上重叠（#57），顶栏挖洞必须限制在会话列内。 */
       function conversationColumnRange() {
-        var view = document.querySelector('[data-conversation-scroll]')
+        var view = conversationViewEl()
         var r = view !== null && typeof view.getBoundingClientRect === 'function'
           ? view.getBoundingClientRect() : null
         if (r === null || r.width <= 0) {
@@ -1652,14 +1703,23 @@ window.__ModuleLoader__.load({
        *  一样被头部遮住。
        *  #63：只取会话列以内的部分。顶栏横带在侧边栏上方同样延伸，若整幅
        *  裁掉会把侧边栏文件批注一并裁掉；且类名启发式（_<header>）也会误中
-       *  侧边栏自己的头——故逐个矩形与会话列求交，完全在列外的直接丢弃。 */
+       *  侧边栏自己的头——故逐个矩形与会话列求交，完全在列外的直接丢弃。
+       *  只认「正文滚动容器之外」的宿主头部：消息内容里的代码块工具栏同样叫
+       *  `*_header`，却随正文滚动移动——把它当遮挡区会让裁剪路径每帧变化
+       *  （高亮滚动到边界时闪一下再消失），还会误裁正文里的标记。 */
       function hostHeaderRects() {
         var col = conversationColumnRange()
-        var rects = hostLocalRects('header')
         if (col === null) return []
+        var scrollBody = conversationViewEl()
+        var els = hostLocalEls('header')
         var out = []
-        for (var i = 0; i < rects.length; i++) {
-          var r = rects[i]
+        for (var i = 0; i < els.length; i++) {
+          var el = els[i]
+          if (scrollBody !== null && typeof scrollBody.contains === 'function'
+            && scrollBody.contains(el)) continue
+          var r = el.getBoundingClientRect()
+          if (r.width <= 0 || r.height <= 0) continue
+          if (r.bottom <= 0 || r.top >= window.innerHeight) continue
           var left = Math.max(r.left, col.left)
           var right = Math.min(r.right, col.right)
           if (right - left <= 0) continue
@@ -1677,60 +1737,83 @@ window.__ModuleLoader__.load({
       function hostComposerRects() {
         var rects = hostLocalRects('composerSeat')
         if (rects.length > 0) return rects
-        var card = document.querySelector('[data-composer-card]')
+        var card = composerCardEl()
         if (card === null) return []
         var r = card.getBoundingClientRect()
         return r.width > 0 && r.height > 0 ? [r] : []
       }
 
-      /** 外框保留、逐个矩形挖空（evenodd）：标记层的裁剪路径。 */
+      /** 外框保留、逐个矩形挖空（evenodd）：标记层的裁剪路径。
+       *
+       *  每个洞都必须从视口上沿「桥接」下来、绕洞一周后再沿原路返回：
+       *  `polygon()` 只有一个轮廓，多个洞直接首尾相接时，洞与洞之间的连接线
+       *  （常常是斜线/竖线，位置随滚动与代码块 header 移动）会额外贡献射线
+       *  交点，使 evenodd 环绕数在洞外区域变成偶数——表现为「原文还在视口里，
+       *  但编号/高亮有时被整块裁掉」。去程与回程两条重合的桥线在 evenodd 下
+       *  相互抵消，只留下洞本身的一次环绕，判定就稳定了。 */
       function clipWithHoles(rects) {
         var d = 'polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0'
         for (var i = 0; i < rects.length; i++) {
           var r = rects[i]
-          d += ', ' + r.left + 'px ' + r.top + 'px, ' + r.right + 'px ' + r.top + 'px, '
-            + r.right + 'px ' + r.bottom + 'px, ' + r.left + 'px ' + r.bottom + 'px, '
-            + r.left + 'px ' + r.top + 'px'
+          var top = Math.max(0, r.top)
+          d += ', ' + r.left + 'px 0px, ' + r.left + 'px ' + top + 'px'
+            + ', ' + r.right + 'px ' + top + 'px, ' + r.right + 'px ' + r.bottom + 'px'
+            + ', ' + r.left + 'px ' + r.bottom + 'px, ' + r.left + 'px ' + top + 'px'
+            + ', ' + r.left + 'px 0px'
         }
         return d + ')'
       }
 
       function renderMarkers() {
         // 对整个标记层挖去输入区与会话头部区域；滚动、尺寸变化时即使原文没动也要刷新。
+        // 遮挡区签名不变时不重写 clipPath——每帧重写会让整个 fixed 层重新裁剪/重绘。
         var holes = hostComposerRects().concat(hostHeaderRects())
-        overlay.style.clipPath = holes.length > 0 ? clipWithHoles(holes) : 'none'
-        // 编号层用同一条裁剪路径兜底：编号只允许出现在会话内容可视区里，
-        // 绝不压在输入框或会话头部之上（定位逻辑已先让位/隐藏，这里是保险）。
-        numLayer.style.clipPath = overlay.style.clipPath
         var sig = markersSignature(holes)
-
         if (sig !== markersSig) {
           markersSig = sig
-          overlay.textContent = ''
-          numLayer.textContent = ''
-          buildMarkers()
+          overlay.style.clipPath = holes.length > 0 ? clipWithHoles(holes) : 'none'
+          // 编号层用同一条裁剪路径兜底：编号只允许出现在会话内容可视区里，
+          // 绝不压在输入框或会话头部之上（定位逻辑已先让位/隐藏，这里是保险）。
+          numLayer.style.clipPath = overlay.style.clipPath
         }
+        markerHoles = holes
+        buildMarkers()
       }
 
       function buildMarkers() {
-        if (ui.quotes.length === 0) return
+        // 标记元素按批注复用（元素池）：滚动时只更新 transform，不再每帧
+        // 清空两层、重建全部 DOM。批注集为空时把池元素全部撤下。
+        if (ui.quotes.length === 0) {
+          if (markerEntries.length > 0) clearMarkers()
+          return
+        }
+        for (var e = 0; e < markerEntries.length; e++) markerEntries[e].used = false
+        // 遮挡区与滚动容器每帧只问一次——旧实现在每条批注的循环里各问一次，
+        // N 条批注就是 3N 次全文档 querySelectorAll + getBoundingClientRect。
+        var blockers = markerHoles !== null
+          ? markerHoles
+          : hostHeaderRects().concat(hostComposerRects())
+        var viewers = hostLocalRects('scrollBody')
+        var col = conversationColumnRange()
         var placed = []
         for (var i = 0; i < ui.quotes.length; i++) {
           var q = ui.quotes[i]
-          var range = locateQuote(q.text, q)
-          if (range === null) continue
-          var rects = quoteRects(range, q)
+          var entry = markerEntryFor(q)
+          entry.used = true
+          var range = locateQuoteCached(q)
+          var rects = range !== null ? quoteRects(range, q) : []
+          // 高亮块：按可见 rect 序号复用池元素，跨行数变化时多出来的隐藏。
+          var shown = 0
           for (var c = 0; c < rects.length; c++) {
             var rect = rects[c]
             if (rect.width === 0 || rect.height === 0) continue
-            var hl = document.createElement('div')
-            hl.className = 'dsh-ann-hl'
-            hl.style.left = rect.left + 'px'
-            hl.style.top = rect.top + 'px'
-            hl.style.width = rect.width + 'px'
-            hl.style.height = rect.height + 'px'
-            overlay.appendChild(hl)
+            var hl = hlAt(entry, shown)
+            placeMarkerEl(hl, Math.round(rect.left), Math.round(rect.top),
+              Math.round(rect.width), Math.round(rect.height))
+            shown++
           }
+          for (var h = shown; h < entry.hls.length; h++) hideMarkerEl(entry.hls[h])
+          // 编号：位置规则与历史实现逐条一致（可见性判定 / 会话列下限 / 碰撞避让）。
           var anchor = null
           for (var k = 0; k < rects.length; k++) {
             var r = rects[k]
@@ -1738,69 +1821,199 @@ window.__ModuleLoader__.load({
             if (r.top > -8 && r.top < window.innerHeight) { anchor = r; break }
           }
           if (anchor === null && rects.length > 0 && rects[0].width > 0) anchor = rects[0]
-          if (anchor !== null) {
-            var chipTop = anchor.top - 20
-            if (chipTop < 4) chipTop = Math.min(anchor.top + 2, window.innerHeight - 22)
-            if (chipTop < 4) chipTop = 4
-            // #63：编号下限抬到会话列可视区上沿 + 4px——原文起于其下时，把落在
-            // 顶栏横带里的编号压回正文区（而不是被裁成半截或整条跳过）；原文
-            // 顶部已滚入顶栏之下时不钳制，仍走下方「与遮挡区相交即跳过」的
-            // 逻辑（跟正文一样，滚出可视区即消失）。
-            var col = conversationColumnRange()
-            var chipFloor = col !== null ? col.top + 4 : 4
-            if (col !== null && anchor.top >= chipFloor && chipTop < chipFloor) chipTop = chipFloor
-            var chipLeft = Math.max(4, Math.min(anchor.left - 4, window.innerWidth - 24))
-            // 编号只允许出现在「会话正文实际看得见」的地方：跟正文一样，滚出
-            // 内容可视区就消失，绝不贴边钉住（钉住会浮在输入框上/下面的空处）。
-            // 两条判据：① 落在正文滚动容器里；② 不与宿主遮挡 UI（会话头部、
-            // 整块输入区）相交。任一不满足就整条不渲染——不渲染也就不会出现
-            // 被裁掉半截的"阴影残影"。
-            var skipChip = false
-            var views = hostLocalRects('scrollBody')
-            for (var vc = 0; vc < views.length; vc++) {
-              var vr = views[vc]
-              if (chipLeft + 26 <= vr.left || chipLeft >= vr.right) continue
-              if (chipTop < vr.top || chipTop + 18 > vr.bottom) skipChip = true
-              break
-            }
-            var blockers = hostHeaderRects().concat(hostComposerRects())
-            for (var bc = 0; bc < blockers.length && !skipChip; bc++) {
-              var bk = blockers[bc]
-              if (chipLeft + 26 <= bk.left || chipLeft >= bk.right) continue
-              if (chipTop + 18 > bk.top && chipTop < bk.bottom) skipChip = true
-            }
-            if (!skipChip) {
-              var chip = document.createElement('div')
-              chip.className = 'dsh-ann-num'
-              chip.textContent = String(i + 1)
-              var tries = 0
-              while (tries < 12) {
-                var clash = false
-                for (var p = 0; p < placed.length; p++) {
-                  var bp = placed[p]
-                  if (Math.abs(bp.left - chipLeft) < 18 && Math.abs(bp.top - chipTop) < 18) {
-                    clash = true
-                    break
-                  }
-                }
-                if (!clash) break
-                chipLeft += 18
-                if (chipLeft > window.innerWidth - 24) { chipLeft = 4; chipTop += 18 }
-                tries++
-              }
-              placed.push({ left: chipLeft, top: chipTop })
-              chip.style.left = chipLeft + 'px'
-              chip.style.top = chipTop + 'px'
-              ;(function (q) {
-                chip.addEventListener('click', function (ev) {
-                  ev.stopPropagation()
-                  openEditorFor(q)
-                })
-              })(q)
-              numLayer.appendChild(chip)
-            }
+          if (anchor === null) { hideMarkerEl(entry.chip); continue }
+          var chipTop = anchor.top - 20
+          if (chipTop < 4) chipTop = Math.min(anchor.top + 2, window.innerHeight - 22)
+          if (chipTop < 4) chipTop = 4
+          // #63：编号下限抬到会话列可视区上沿 + 4px——原文起于其下时，把落在
+          // 顶栏横带里的编号压回正文区（而不是被裁成半截或整条跳过）；原文
+          // 顶部已滚入顶栏之下时不钳制，仍走下方「与遮挡区相交即跳过」的
+          // 逻辑（跟正文一样，滚出可视区即消失）。
+          var chipFloor = col !== null ? col.top + 4 : 4
+          if (col !== null && anchor.top >= chipFloor && chipTop < chipFloor) chipTop = chipFloor
+          var chipLeft = Math.max(4, Math.min(anchor.left - 4, window.innerWidth - 24))
+          // 编号只允许出现在「会话正文实际看得见」的地方：跟正文一样，滚出
+          // 内容可视区就消失，绝不贴边钉住（钉住会浮在输入框上/下面的空处）。
+          // 两条判据：① 落在正文滚动容器里；② 不与宿主遮挡 UI（会话头部、
+          // 整块输入区）相交。任一不满足就整条不渲染——不渲染也就不会出现
+          // 被裁掉半截的"阴影残影"。
+          var skipChip = false
+          for (var vc = 0; vc < viewers.length; vc++) {
+            var vr = viewers[vc]
+            if (chipLeft + 26 <= vr.left || chipLeft >= vr.right) continue
+            if (chipTop < vr.top || chipTop + 18 > vr.bottom) skipChip = true
+            break
           }
+          for (var bc = 0; bc < blockers.length && !skipChip; bc++) {
+            var bk = blockers[bc]
+            if (chipLeft + 26 <= bk.left || chipLeft >= bk.right) continue
+            if (chipTop + 18 > bk.top && chipTop < bk.bottom) skipChip = true
+          }
+          if (skipChip) { hideMarkerEl(entry.chip); continue }
+          var chip = chipAt(entry)
+          var label = String(i + 1)
+          if (chip.textContent !== label) chip.textContent = label
+          var tries = 0
+          while (tries < 12) {
+            var clash = false
+            for (var p = 0; p < placed.length; p++) {
+              var bp = placed[p]
+              if (Math.abs(bp.left - chipLeft) < 18 && Math.abs(bp.top - chipTop) < 18) {
+                clash = true
+                break
+              }
+            }
+            if (!clash) break
+            chipLeft += 18
+            if (chipLeft > window.innerWidth - 24) { chipLeft = 4; chipTop += 18 }
+            tries++
+          }
+          placed.push({ left: chipLeft, top: chipTop })
+          placeMarkerEl(chip, Math.round(chipLeft), Math.round(chipTop), null, null)
         }
+        // 已经删除的批注：把它们的池元素撤下并释放（removeQuote 之后）。
+        for (var m = markerEntries.length - 1; m >= 0; m--) {
+          if (markerEntries[m].used) continue
+          clearMarkerEls(markerEntries[m])
+          markerEntries.splice(m, 1)
+        }
+      }
+
+      // ---------- 标记元素池 ----------
+      // 每条批注的标记元素在首次渲染时创建、之后长期复用：滚动时每帧只有
+      // transform 变化，不产生 DOM 增删。旧的「每帧清空重建」正是滚动卡顿与
+      // 标记滞后半拍的主因：fixed 标记层由主线程逐帧更新，而正文滚动在合成
+      // 线程，主线程每帧重建 N 条标记就必然落后于滚动。
+      var markerEntries = []
+      var markerEntryOf = typeof WeakMap === 'function' ? new WeakMap() : null
+      var locateCache = typeof WeakMap === 'function' ? new WeakMap() : null
+      var markerHoles = null
+
+      function markerEntryFor(q) {
+        var entry = markerEntryOf !== null ? markerEntryOf.get(q) : undefined
+        if (entry !== undefined) return entry
+        entry = { quote: q, hls: [], used: false, chip: null }
+        if (markerEntryOf !== null) markerEntryOf.set(q, entry)
+        markerEntries.push(entry)
+        return entry
+      }
+
+      function hlAt(entry, index) {
+        var el = entry.hls[index]
+        if (el !== undefined) return el
+        el = document.createElement('div')
+        el.className = 'dsh-ann-hl'
+        el.style.display = 'none'
+        entry.hls[index] = el
+        overlay.appendChild(el)
+        return el
+      }
+
+      function chipAt(entry) {
+        if (entry.chip !== null) return entry.chip
+        var chip = document.createElement('div')
+        chip.className = 'dsh-ann-num'
+        chip.style.display = 'none'
+        ;(function (q) {
+          chip.addEventListener('click', function (ev) {
+            ev.stopPropagation()
+            openEditorFor(q)
+          })
+        })(entry.quote)
+        entry.chip = chip
+        numLayer.appendChild(chip)
+        return chip
+      }
+
+      /** 只在几何真正变化时写 style：fixed 层用 transform 定位（不触发布局），
+       *  尺寸只在换行/字号变化时写。w/h 传 null 表示由内容决定。 */
+      function placeMarkerEl(el, x, y, w, h) {
+        var g = el.__annGeom
+        if (g === undefined) g = el.__annGeom = { x: null, y: null, w: null, h: null, shown: false }
+        if (g.x !== x || g.y !== y) {
+          g.x = x
+          g.y = y
+          el.style.left = '0px'
+          el.style.top = '0px'
+          el.style.transform = 'translate(' + x + 'px,' + y + 'px)'
+        }
+        if (w !== null && g.w !== w) { g.w = w; el.style.width = w + 'px' }
+        if (h !== null && g.h !== h) { g.h = h; el.style.height = h + 'px' }
+        if (!g.shown) { g.shown = true; el.style.display = '' }
+      }
+
+      function hideMarkerEl(el) {
+        if (el === null || el === undefined) return
+        var g = el.__annGeom
+        if (g !== undefined) {
+          if (!g.shown) return
+          g.shown = false
+        }
+        el.style.display = 'none'
+      }
+
+      function clearMarkerEls(entry) {
+        for (var i = 0; i < entry.hls.length; i++) {
+          if (entry.hls[i].parentNode !== null) entry.hls[i].parentNode.removeChild(entry.hls[i])
+        }
+        entry.hls.length = 0
+        if (entry.chip !== null && entry.chip.parentNode !== null) entry.chip.parentNode.removeChild(entry.chip)
+        entry.chip = null
+      }
+
+      /** 标记层完全清空（批注集为空 / 插件卸载）。 */
+      function clearMarkers() {
+        for (var i = 0; i < markerEntries.length; i++) clearMarkerEls(markerEntries[i])
+        markerEntries.length = 0
+      }
+
+      /** 定位结果缓存：DOM 内容不变时滚动只重读 rect，不再重复跑文本扫描。
+       *  locateQuote 的慢路径是 O(会话文本长度) 的全量扫描，每帧每条批注一次
+       *  就足以把滚动帧预算吃满（尤其是刷新后恢复、没有 live Range 的批注）。
+       *  文件批注额外校验来源文件未变：宿主切文件时可能只改
+       *  `data-textpreview-url`（文本节点未重建），仅靠 isConnected + 文本匹配
+       *  会把 a.md 的标记继续画在 b.md 上。 */
+      function locateQuoteCached(q) {
+        var cached = locateCache !== null ? locateCache.get(q) : undefined
+        if (cached !== undefined) {
+          if (cached.range !== null && rangeAlive(cached.range, q.text) && sourceAlive(cached.range, q)) {
+            return cached.range
+          }
+          // 上一次重定位失败、且之后宿主 DOM 没有变化（滚动/快速滚动本身不改
+          // DOM）：直接沿用失败结果，别每帧重跑 locateQuote 的全量文本扫描——
+          // 长会话里每条批注一次 O(文本长度) 扫描，快速滚动会把主线程拖满，
+          // 标记跟不上滚动就会闪现。加载更早等 DOM 变化会递增 seq，自然重试。
+          if (cached.range === null && cached.domSeq === domMutationSeq) return null
+        }
+        var range = locateQuote(q.text, q)
+        if (locateCache !== null) {
+          if (range !== null) locateCache.set(q, { range: range })
+          else locateCache.set(q, { range: null, domSeq: domMutationSeq })
+        }
+        return range
+      }
+
+      /** 批注的 Range 是否仍落在原文所属的文件预览里（普通正文批注恒真）。 */
+      function sourceAlive(range, q) {
+        if (!q.sourceUrl) return true
+        try {
+          var source = documentSourceOf(range.commonAncestorContainer)
+          if (source === null || source.sourceUrl !== q.sourceUrl) return false
+          return source.root.getClientRects().length > 0
+        } catch (_) { return false }
+      }
+
+      /** 缓存 Range 是否仍是原文的有效定位：节点还在文档里且文本未变。
+       *  React 重渲染会替换文本节点（isConnected=false）或改写文本，这两种
+       *  情况都必须重新定位。 */
+      function rangeAlive(range, text) {
+        try {
+          if (range === null || range.startContainer === null
+            || !range.startContainer.isConnected) return false
+          var live = range.toString()
+          if (live === text) return true
+          return live.replace(/\s+/g, ' ').trim() === text.replace(/\s+/g, ' ').trim()
+        } catch (_) { return false }
       }
 
       // ---------- 动作 ----------
@@ -2105,29 +2318,58 @@ window.__ModuleLoader__.load({
 
       /** 待发送胶囊必须让开整个输入区：队列的「立即发送」按钮在卡片上方
        *  的 dock 内（#60）。优先稳定的 data hook，旧宿主认完整 CSS local，
-       *  不能误中 composerSeatInner；没有 seat 的宿主仍以输入卡片为锚。 */
+       *  不能误中 composerSeatInner；没有 seat 的宿主仍以输入卡片为锚。
+       *  结果按输入卡片引用缓存：滚动路径每帧都会问一次，父链遍历不该重做。 */
       function composerSeatOf(card) {
+        var cached = composerSeatOf.cache
+        if (cached !== undefined && cached.card === card) return cached.seat
         var seat = card.closest('[data-composer-seat]')
-        if (seat !== null) return seat
-        for (var el = card.parentElement; el !== null; el = el.parentElement) {
-          if (/(^|\s)\S*_composerSeat(\s|$)/.test(el.getAttribute('class') || '')) return el
+        if (seat !== null) {
+          composerSeatOf.cache = { card: card, seat: seat }
+          return seat
         }
+        for (var el = card.parentElement; el !== null; el = el.parentElement) {
+          if (/(^|\s)\S*_composerSeat(\s|$)/.test(el.getAttribute('class') || '')) {
+            composerSeatOf.cache = { card: card, seat: el }
+            return el
+          }
+        }
+        composerSeatOf.cache = { card: card, seat: card }
         return card
+      }
+
+      // 胶囊内容只在条数/文案变化时重建；滚动路径每帧只做 rect 比较后写位置。
+      // 旧实现每帧清空重放子节点并读 offsetWidth（强制同步布局），即使胶囊
+      // 位置没变也要付一次布局的代价——这是滚动卡顿的另一个固定成本。
+      var chipContentSig = null
+      var chipGeom = { left: null, top: null, w: 0, h: 0 }
+      function syncChipContent() {
+        var count = ui.quotes.length
+        var label = plural('chip.count', count)
+        var sig = count + '|' + label
+        if (sig === chipContentSig) return false
+        chipContentSig = sig
+        chipLayer.textContent = ''
+        var b = document.createElement('b')
+        b.style.cssText = 'color:var(--dsw-alias-text-accent,#4c9aff);font-weight:700;'
+        b.textContent = String(count)
+        chipLayer.appendChild(b)
+        chipLayer.appendChild(document.createTextNode(label))
+        chipGeom.w = 0
+        chipGeom.h = 0
+        return true
       }
 
       function updateChip() {
         if (ui.quotes.length === 0) {
-          chipLayer.style.display = 'none'
-          clearTip(chipLayer)
+          chipContentSig = null
+          chipGeom.left = null
+          chipGeom.top = null
+          hideChip()
           return
         }
-        chipLayer.textContent = ''
-        var b = document.createElement('b')
-        b.style.cssText = 'color:var(--dsw-alias-text-accent,#4c9aff);font-weight:700;'
-        b.textContent = String(ui.quotes.length)
-        chipLayer.appendChild(b)
-        chipLayer.appendChild(document.createTextNode(plural('chip.count', ui.quotes.length)))
-        var card = document.querySelector('[data-composer-card]')
+        syncChipContent()
+        var card = composerCardEl()
         var seat = card === null ? null : composerSeatOf(card)
         if (seat !== observedComposer) {
           if (composerObserver !== null) composerObserver.disconnect()
@@ -2135,31 +2377,53 @@ window.__ModuleLoader__.load({
           // 队列增加/展开时卡片尺寸可能完全不变，要观察包含 dock 的 seat。
           if (composerObserver !== null && seat !== null) composerObserver.observe(seat)
         }
-        if (card === null) {
-          chipLayer.style.display = 'none'
-          clearTip(chipLayer)
-          return
-        }
+        if (card === null) { hideChip(); return }
         var r = card.getBoundingClientRect()
         if (r.width === 0 || r.height === 0 || r.right <= 0 || r.bottom <= 0
           || r.left >= window.innerWidth || r.top >= window.innerHeight) {
-          chipLayer.style.display = 'none'
-          clearTip(chipLayer)
+          hideChip()
           return
         }
         // display:none 时 offsetWidth 为 0；先显示再量，首帧也能正确对齐长文案。
+        // 量过一次后缓存宽高：内容不变时滚动不再触发强制布局。
         chipLayer.style.display = 'flex'
-        var w = chipLayer.offsetWidth || 80
-        var h = chipLayer.offsetHeight || 24
+        if (chipGeom.w === 0) {
+          chipGeom.w = chipLayer.offsetWidth || 80
+          chipGeom.h = chipLayer.offsetHeight || 24
+        }
+        var w = chipGeom.w
+        var h = chipGeom.h
         var top = Math.min(r.top, seat.getBoundingClientRect().top) - h - 6
         // 不能把胶囊钳回 seat 内而遮住队列控件；空间恢复后下一次布局刷新会重显。
         if (top < 8) {
-          chipLayer.style.display = 'none'
-          clearTip(chipLayer)
+          hideChip()
           return
         }
-        chipLayer.style.left = Math.max(8, Math.min(r.right - w - 12, window.innerWidth - w - 8)) + 'px'
-        chipLayer.style.top = top + 'px'
+        var left = Math.max(8, Math.min(r.right - w - 12, window.innerWidth - w - 8))
+        // 宿主的「回到底部」按钮与胶囊同在输入卡片上方右侧。按钮存在时先按
+        // 可见矩形判断是否相交（水平、垂直各留一点呼吸余量），相交就把胶囊
+        // 整个让到按钮左侧——否则两枚控件叠在一起，胶囊的 hover / 点击都会
+        // 被按钮截走。左移后仍钳在视口内，空间实在不够时让位优先（不隐藏
+        // 胶囊：批注比按钮更重要）。
+        var avoid = toBottomRects()
+        for (var i = 0; i < avoid.length; i++) {
+          var a = avoid[i]
+          if (left + w + 6 <= a.left || left >= a.right + 6) continue
+          if (top + h + 4 <= a.top || top >= a.bottom + 4) continue
+          left = Math.max(8, a.left - w - 8)
+        }
+        if (chipGeom.left !== left || chipGeom.top !== top) {
+          chipGeom.left = left
+          chipGeom.top = top
+          chipLayer.style.left = left + 'px'
+          chipLayer.style.top = top + 'px'
+        }
+      }
+
+      /** 隐藏胶囊并只释放它自己的悬浮面板（归属清理，不误杀气泡/芯片面板）。 */
+      function hideChip() {
+        if (chipLayer.style.display !== 'none') chipLayer.style.display = 'none'
+        clearTip(chipLayer)
       }
 
       // 悬停宽限：标签与面板间有间隙，鼠标跨越间隙的瞬间不在任何元素上——
@@ -2693,6 +2957,9 @@ window.__ModuleLoader__.load({
        *  不依赖发送事件链：异步渲染、刷新后的历史消息都能被覆盖。 */
       function decorateAll() {
         try {
+          // 1s 兜底：宿主可能只换 class 不增删节点（视图 tab 切换、composer 状态
+          // 变化），这类变化不会触发 childList 失效；每秒重查一次足够便宜。
+          invalidateHostLocalRects()
           var rows = allMessageRows()
           for (var i = rows.length - 1; i >= 0; i--) {
             var el = rows[i]
@@ -2792,6 +3059,7 @@ window.__ModuleLoader__.load({
         if (cur === lastSessionId) return
         writePendingQuotes(lastSessionId)
         lastSessionId = cur
+        invalidateHostLocalRects()
         if (ui.mode !== 'closed') closeToolbar()
         ui.quotes = readPendingQuotes(cur)
         annotationAttached = false
@@ -2853,6 +3121,7 @@ window.__ModuleLoader__.load({
         if (decoTimer !== null) { clearInterval(decoTimer); decoTimer = null }
         if (decorateAllPending !== null) { clearTimeout(decorateAllPending); decorateAllPending = null }
         if (composerObserver !== null) composerObserver.disconnect()
+        clearMarkers()
         chipLayer.remove()
         tipLayer.remove()
         host.remove()

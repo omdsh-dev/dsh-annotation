@@ -1,5 +1,6 @@
 // Run with PLAYWRIGHT_MODULE pointing to an existing Playwright installation.
 import assert from 'node:assert/strict'
+import { fileURLToPath } from 'node:url'
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
 try {
@@ -29,7 +30,7 @@ try {
       { id: 'second', text: 'Another passage.', note: 'second note' },
     ]))
   })
-  await page.addScriptTag({ path: new URL('../client.js', import.meta.url).pathname })
+  await page.addScriptTag({ path: fileURLToPath(new URL('../client.js', import.meta.url)) })
   await page.evaluate(() => {
     window.locale = 'zh'
     window.forceClicks = 0
