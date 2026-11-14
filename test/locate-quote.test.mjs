@@ -39,11 +39,12 @@ function makeEl (text) {
 }
 
 function makeLocator () {
-  const state = { anchors: {}, rows: [] }
+  const state = { anchors: {}, rows: [], flow: null }
   const document = {
     querySelector (selector) {
       const m = /^\[data-(?:chat|focus)-anchor-key="(.+)"\]$/.exec(selector)
       if (m !== null) return state.anchors[m[1]] ?? null
+      if (selector === '[data-chat-flow]' || selector === '[data-focus-flow]') return state.flow
       return null
     },
     querySelectorAll () { return [] },
@@ -133,4 +134,13 @@ test('没有任何匹配时返回 null', () => {
   const { state, locate } = makeLocator()
   state.rows = [makeEl('alpha beta')]
   assert.equal(locate('gamma', saved({})), null)
+})
+
+test('flow 兜底：行选择器漏掉时用空白不敏感全文匹配', () => {
+  const { state, locate } = makeLocator()
+  state.rows = []
+  state.flow = makeEl('前面 直接写回字面量，\n代码行数也降下 后面')
+  const range = locate('直接写回字面量，代码行数也降下', saved({}))
+  assert.ok(range !== null)
+  assert.equal(range.el, state.flow)
 })

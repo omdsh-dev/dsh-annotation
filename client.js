@@ -215,6 +215,8 @@ window.__ModuleLoader__.load({
         // label-tertiary，不额外变色），光标提示可点击。
         '.dsh-ann-tip-jump { cursor: pointer; }',
         '.dsh-ann-tip-jump:hover { text-decoration: underline; text-underline-offset: 2px; }',
+        // 浮窗跳转后的 2 秒落点高亮（CSS Custom Highlight，不影响宿主 DOM）。
+        '::highlight(dsh-ann-jump-flash) { background-color: rgba(255,195,0,.35); color: inherit; }',
         // 「回到批注内容」箭头：只保留双 V，不画按钮底板。
         '.dsh-ann-jump { position: fixed; z-index: 1205; display: inline-flex; align-items: center;',
         '  justify-content: center; width: 44px; height: 28px; padding: 0;',
@@ -666,17 +668,6 @@ window.__ModuleLoader__.load({
       return out
     }
 
-    function allPositionsOf(el, quote) {
-      var full = el.textContent || ''
-      var out = []
-      var idx = full.indexOf(quote)
-      while (idx !== -1) {
-        out.push(idx)
-        idx = full.indexOf(quote, idx + 1)
-      }
-      return out
-    }
-
     function ctxScore(full, pos, len, ctx) {
       if (ctx === null) return 0
       var before = full.slice(Math.max(0, pos - 24), pos)
@@ -915,7 +906,7 @@ window.__ModuleLoader__.load({
           if (bestRow !== null) return bestRow.range
         }
       }
-      var ctx = saved !== undefined && saved !== null
+      var ctx = saved !== undefined && saved !== null && (saved.ctxBefore || saved.ctxAfter)
         ? { before: saved.ctxBefore || '', after: saved.ctxAfter || '' }
         : null
       var best = null
@@ -931,17 +922,10 @@ window.__ModuleLoader__.load({
       var flow = document.querySelector('[data-chat-flow]')
       if (flow === null) flow = document.querySelector('[data-focus-flow]')
       if (flow !== null) {
-        var full2 = flow.textContent || ''
-        var positions2 = allPositionsOf(flow, quote)
-        var best2 = null
-        var bestScore2 = -1
-        for (var q2 = 0; q2 < positions2.length; q2++) {
-          var range2 = rangeFromOffset(flow, positions2[q2], quote.length)
-          if (range2 === null) continue
-          var score2 = ctxScore(full2, positions2[q2], quote.length, ctx)
-          if (score2 > bestScore2) { bestScore2 = score2; best2 = range2 }
-        }
-        if (best2 !== null && (ctx === null || bestScore2 > 0)) return best2
+        // 行选择器漏掉某些消息时（例如步骤体结构变化），全文兜底必须和
+        // 行扫描一样忽略空白：严格 indexOf 会被换行/缩进差异挡住。
+        var bestFlow = matchIn(flow, quote, ctx)
+        if (bestFlow !== null && (ctx === null || bestFlow.score > 0)) return bestFlow.range
       }
       return null
     }
@@ -2858,6 +2842,107 @@ window.__ModuleLoader__.load({
       }
 
       // ---------- 动作 ----------
+      /** 从节点向上收集所有「纵向可滚动」的祖先（不含 body / documentElement）。 */
+      function scrollableAncestors(el) {
+        var out = []
+        for (var p = el; p !== null && p !== document.body && p !== document.documentElement; p = p.parentElement) {
+          var oy = getComputedStyle(p).overflowY
+          if (oy !== 'auto' && oy !== 'scroll' && oy !== 'overlay') continue
+          if (p.scrollHeight <= p.clientHeight + 1) continue
+          out.push(p)
+        }
+        return out
+      }
+
+      /** 把 rect 在单个滚动容器里垂直居中（带边界钳制），返回实际写入的滚动位移。 */
+      function centerRectInScroller(scroller, rect, shift, behavior) {
+        var box = scroller.getBoundingClientRect()
+        var target = scroller.scrollTop + rect.top - shift - box.top
+          - Math.max(0, (scroller.clientHeight - rect.height) / 2)
+        target = Math.max(0, Math.min(target, scroller.scrollHeight - scroller.clientHeight))
+        var delta = target - scroller.scrollTop
+        try { scroller.scrollTo({ top: target, behavior: behavior }) } catch (_) { scroller.scrollTop = target }
+        return delta
+      }
+
+      /** 把 Range 滚到视口中央（默认平滑；用户开启「减少动态效果」时瞬时）。
+       *  DSH 正文滚动体是 [data-conversation-scroll]，步骤过程体是
+       *  [data-step-process-body]，侧边栏文件预览另有自己的滚动容器；且这些
+       *  容器内部还可能嵌套滚动容器（长代码块、长表格的 overflow:auto）。
+       *  因此从 range 向上收集**每一层**纵向可滚动祖先，由内到外逐个居中：
+       *  只滚最内层的局部容器会让正文看起来「没动」（批注文字在代码块自己
+       *  的滚动区里），只滚最外层则看不到嵌在长代码块深处的原文。没有局部
+       *  滚动容器时才退回窗口滚动。range 由调用方定位，找不到也返回 false。 */
+      function scrollRangeIntoView(range) {
+        try {
+          var node = range.startContainer
+          var el = node instanceof Element ? node : (node !== null ? node.parentElement : null)
+          if (el === null) return false
+          var rect = range.getBoundingClientRect()
+          var behavior = 'smooth'
+          try {
+            if (typeof window.matchMedia === 'function'
+              && window.matchMedia('(prefers-reduced-motion: reduce)').matches) behavior = 'auto'
+          } catch (_) { /* 保持平滑 */ }
+          var scrollers = scrollableAncestors(el)
+          if (scrollers.length === 0) {
+            var winTop = (window.scrollY || 0) + rect.top
+              - Math.max(0, (window.innerHeight - rect.height) / 2)
+            try { window.scrollTo({ top: winTop, behavior: behavior }) } catch (_) { window.scrollTo(0, winTop) }
+            return true
+          }
+          // 由内到外逐层居中，但 rect 只在循环外读一次：内层容器滚动后，range
+          // 在视口中的位置会同步上移（smooth 动画期间重读也读不到最终位置），
+          // 后续外层必须用「原始 rect - 已滚量之和」计算，否则外层会把滚动前的
+          // 旧位置居中，偏差等于内滚总量（长代码块里可能把目标送出视口）。
+          // 已滚量用实际写入量累计（clamp 后的值），被内容边界截断时同样成立。
+          var shift = 0
+          for (var i = 0; i < scrollers.length; i++) {
+            shift += centerRectInScroller(scrollers[i], rect, shift, behavior)
+          }
+          return true
+        } catch (_) { return false }
+      }
+
+      var flashTimer = null
+      /** 跳转后把目标文本高亮 2 秒，给用户视线一个落点。 */
+      function flashRange(range) {
+        if (typeof CSS === 'undefined' || CSS.highlights === undefined
+          || typeof Highlight !== 'function') return
+        try {
+          CSS.highlights.set('dsh-ann-jump-flash', new Highlight(range))
+          if (flashTimer !== null) clearTimeout(flashTimer)
+          flashTimer = setTimeout(function () {
+            flashTimer = null
+            CSS.highlights.delete('dsh-ann-jump-flash')
+          }, 2000)
+        } catch (_) { /* 高亮失败不影响跳转 */ }
+      }
+
+      /** 点击浮窗条目：把正文滚到该批注的原文处；原文已不可定位（或所在
+       *  容器无法滚动）时提示并保持面板。 */
+      function scrollToQuote(q, flash) {
+        var range = locateQuoteCached(q)
+        if (range === null || !scrollRangeIntoView(range)) {
+          showToast(t('toast.jumpLost'))
+          return false
+        }
+        if (flash) flashRange(range)
+        return true
+      }
+
+      /** 给浮窗里的批注原文（label tertiary）挂「跳转到目标内容」交互。
+       *  hover 下划线由 `.dsh-ann-tip-jump` 的 CSS 负责，title 是原生悬停提示
+       *  （与胶囊/角标的 title 约定一致，不额外占用共享 tipLayer）。 */
+      function enableQuoteJump(el, q, flash) {
+        el.classList.add('dsh-ann-tip-jump')
+        el.title = t('tip.jump')
+        el.addEventListener('click', function (ev) {
+          ev.stopPropagation()
+          scrollToQuote(q, flash)
+        })
+      }
+
       /** 当前浏览器选区 Range；没有选区/已折叠时返回 null。
        *  点击工具条按钮的瞬间 Chromium 会清掉页面选区，所以进入编辑浮窗后
        *  不能只依赖实时选区——必须接受 settle 时缓存的 `ui.selectionRange`。 */
@@ -2882,7 +2967,7 @@ window.__ModuleLoader__.load({
           var liveText = live.toString()
           // 选区文本与 settle 快照一致才持有 live range；不一致（选区微变、DOM
           // 被批注芯片等装饰改写）时也绝不返回全空锚——尽力抓行级锚点
-          // （seqKey/rowHead），让 locateQuote 在锚点消息内宽松重定位。
+          // （seqKey/rowHead），让  在锚点消息内宽松重定位。
           var textMatch = liveText.trim() === text
             || liveText.trim().replace(/\s+/g, ' ') === text.replace(/\s+/g, ' ')
           if (textMatch) {
@@ -3618,6 +3703,7 @@ window.__ModuleLoader__.load({
               var body = document.createElement('span')
               body.style.cssText = 'font-size:11px;line-height:1.5;color:var(--dsw-alias-label-tertiary);'
               body.textContent = truncate(list[i].text, 50)
+              enableQuoteJump(body, list[i], true)
               item.appendChild(num)
               item.appendChild(body)
               if (list[i].note !== '') {
@@ -3802,6 +3888,7 @@ window.__ModuleLoader__.load({
           var quote = document.createElement('div')
           quote.style.cssText = 'font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary);word-break:break-word;padding:6px 8px;border-radius:8px;background:rgba(127,127,127,.12);'
           quote.textContent = truncate(item.text, 140)
+          enableQuoteJump(quote, item, true)
           el.appendChild(quote)
           if (typeof item.note === 'string' && item.note !== '') {
             var note = document.createElement('div')
