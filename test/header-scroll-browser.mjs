@@ -1,6 +1,8 @@
 // A real scroll/normal-flow header fixture; production bundle is never patched.
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
 const cases = [
@@ -48,8 +50,11 @@ try {
         hl.style.pointerEvents = keep
       }
       const markers = [...document.querySelectorAll('.dsh-ann-num')]
-      const markerOverlap = markers.some(el => { const r = el.getBoundingClientRect(); return r.top < header.bottom && r.bottom > header.top })
-      return { headerPaint, markerOverlap, markerCount: markers.length,
+      // 标记层改为元素池后，不可见的编号留在 DOM 里（display:none），
+      // 因此这里只统计真正渲染出来的编号（与旧实现的"移除即不可见"等价）。
+      const visibleMarkers = markers.filter(el => el.getClientRects().length > 0)
+      const markerOverlap = visibleMarkers.some(el => { const r = el.getBoundingClientRect(); return r.top < header.bottom && r.bottom > header.top })
+      return { headerPaint, markerOverlap, markerCount: visibleMarkers.length,
         clip: document.querySelector('[data-annotation-overlay]').style.clipPath }
     })
     const scroll = async value => {
@@ -57,14 +62,15 @@ try {
       await page.waitForFunction(value => {
         const range = document.createRange(); range.selectNodeContents(document.querySelector('#quote'))
         const r = range.getBoundingClientRect(); const hl = document.querySelector('.dsh-ann-hl')
-        return hl !== null && Math.abs(parseFloat(hl.style.top) - r.top) < 1
+        // 标记用 transform 定位（left/top 固定 0px），实际位置必须读渲染矩形。
+        return hl !== null && Math.abs(hl.getBoundingClientRect().top - r.top) < 1
       }, value)
     }
     await scroll(120)
     const underHeader = await inspect()
     assert.equal(underHeader.headerPaint, !entry.fixed, `${entry.name}: real scrolling highlight under normal-flow header ${JSON.stringify(underHeader)}`)
     assert.equal(underHeader.markerOverlap, !entry.fixed, `${entry.name}: marker must disappear when scrolled under header`)
-    await page.screenshot({ path: `/tmp/annotation-header-${entry.name}.png` })
+    await page.screenshot({ path: join(tmpdir(), `annotation-header-${entry.name}.png`) })
     // Restore the saved annotation while its source lies behind the header.
     await page.evaluate(() => { window.dispose(); document.getElementById('annotation-for-dsh-style')?.remove() })
     await boot()

@@ -77,7 +77,58 @@ window.__ModuleLoader__.load({
         '  font-size: 12px; line-height: 18px; cursor: pointer; }',
         '.dsh-ann-ghost:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }',
         '.dsh-ann-ghost:disabled { opacity: .45; cursor: default; }',
+        // 展开标签面板时压暗「批注」按钮，暗示「标签 / 批注」二选一（仍可点击）。
+        '.dsh-ann-ghost-dim { opacity: .42; }',
+        '.dsh-ann-ghost-dim:hover:not(:disabled) { opacity: .68; }',
         '.dsh-ann-ghost svg { width: 14px; height: 14px; }',
+        // 标签入口与「批注」融合成 split：细竖线 + 紧凑图标按钮，负 margin 贴近。
+        '.dsh-ann-split { flex: none; width: 1px; height: 16px; margin: 0 -2px;',
+        '  background: var(--dsw-alias-border-inverted, rgba(255,255,255,.18)); }',
+        '.dsh-ann-tag-toggle { display: inline-flex; align-items: center; justify-content: center;',
+        '  flex: none; width: 26px; height: 28px; padding: 0; margin-left: -5px;',
+        '  border: none; border-radius: 13px;',
+        '  background: transparent; color: var(--dsw-alias-label-secondary, #b6b8bc); cursor: pointer; }',
+        '.dsh-ann-tag-toggle:hover, .dsh-ann-tag-toggle[aria-expanded="true"] {',
+        '  background: var(--dsw-alias-interactive-bg-hover);',
+        '  color: var(--dsw-alias-label-primary, #ededee); }',
+        '.dsh-ann-tag-toggle svg { width: 14px; height: 14px; }',
+        // 快捷标签：工具条内向右展开的浮岛按钮（末尾「+」），hover 右上角小叉删除；
+        // 展开/收起的宽度过渡由 JS 控制。
+        '.dsh-ann-tags { display: inline-flex; align-items: center; gap: 6px; padding: 0 2px;',
+        '  overflow: hidden; }',
+        '.dsh-ann-tag { position: relative; display: inline-flex; align-items: center;',
+        '  height: 22px; padding: 0 9px; border: 1px solid var(--dsw-alias-border-l2, rgba(255,255,255,.16));',
+        '  border-radius: 11px; background: var(--dsw-alias-bg-layer-1, #1b1b1c);',
+        '  color: var(--dsw-alias-label-primary, #ededee); font-family: inherit;',
+        '  font-size: 11px; line-height: 20px; white-space: nowrap; cursor: pointer; }',
+        '.dsh-ann-tag:hover:not(:disabled) { border-color: var(--dsw-alias-text-accent, #4c9aff); }',
+        '.dsh-ann-tag-del { position: absolute; top: -7px; right: -7px; display: none;',
+        '  width: 15px; height: 15px; padding: 0; border-radius: 8px;',
+        '  border: 1px solid var(--dsw-alias-border-inverted, rgba(255,255,255,.3));',
+        '  background: var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-base, #2c2c2e));',
+        '  color: var(--dsw-alias-label-secondary, #b6b8bc); font-size: 10px; line-height: 13px;',
+        '  text-align: center; cursor: pointer; }',
+        '.dsh-ann-tag:hover .dsh-ann-tag-del, .dsh-ann-tag:focus-within .dsh-ann-tag-del { display: block; }',
+        '.dsh-ann-tag-add { display: inline-flex; align-items: center; justify-content: center;',
+        '  width: 22px; height: 22px; padding: 0; border-radius: 11px;',
+        '  border: 1px dashed var(--dsw-alias-border-l2, rgba(255,255,255,.22)); background: transparent;',
+        '  color: var(--dsw-alias-label-secondary, #b6b8bc); font-size: 14px; line-height: 1; cursor: pointer; }',
+        '.dsh-ann-tag-add:hover { border-color: var(--dsw-alias-text-accent, #4c9aff);',
+        '  color: var(--dsw-alias-label-primary, #ededee); }',
+        '.dsh-ann-tag-input { width: 84px; height: 22px; padding: 0 8px; border-radius: 11px;',
+        '  border: 1px solid var(--dsw-alias-text-accent, #4c9aff);',
+        '  background: var(--dsw-alias-bg-layer-1, #1b1b1c); color: var(--dsw-alias-label-primary, #ededee);',
+        '  font-family: inherit; font-size: 11px; line-height: 20px; outline: none; }',
+        '.dsh-ann-tag-input::placeholder { color: var(--dsw-alias-label-dimmed, #73767b); }',
+        // 编号后跟随的标签文字（纯展示，不加粗，避免小字号发虚）。
+        '.dsh-ann-num-tag { position: fixed; z-index: 941; display: inline-flex;',
+        '  align-items: center; max-width: 76px; height: 16px; padding: 0 5px;',
+        '  border-radius: 8px; border: 1px solid rgba(255, 255, 255, .28);',
+        '  background: var(--dsw-alias-bg-layer-2, #2c2c2e);',
+        '  color: var(--dsw-alias-label-secondary, #b6b8bc); font-family: var(--dsw-font-family, system-ui);',
+        '  font-size: 11px; font-weight: 450; line-height: 14px; white-space: nowrap;',
+        '  overflow: hidden; text-overflow: ellipsis; box-shadow: 0 1px 4px rgba(0,0,0,.35);',
+        '  pointer-events: none; }',
         '.dsh-ann-action { display: inline-flex; align-items: center; gap: 5px; height: 28px;',
         '  padding: 0 12px; border: none; border-radius: 14px;',
         '  background: var(--dsw-alias-button-primary-fill);',
@@ -104,12 +155,15 @@ window.__ModuleLoader__.load({
         '.dsh-ann-card-title { font-size: 13px; font-weight: 600;',
         '  color: var(--dsw-alias-label-primary); }',
         '.dsh-ann-card-headmain { display: flex; align-items: center; gap: 2px; min-width: 0; }',
+        // 引用区只显示三行：overflow 的裁剪区是 padding box，底部内边距必须为 0，
+        // 否则第四行会从 padding-bottom 里露出一截；max-height 精确等于顶部内边距
+        // 6px + 三行行高 12×1.55×3 = 55.8px，即 61.8px。
         '.dsh-ann-quote { font-size: 12px; line-height: 1.55;',
         '  color: var(--dsw-alias-label-tertiary);',
         '  border-left: 2px solid var(--dsw-alias-border-inverted);',
         '  background: var(--dsw-alias-bg-layer-1);',
-        '  border-radius: 0 8px 8px 0; padding: 6px 10px; margin-bottom: 8px;',
-        '  max-height: 72px; overflow: hidden; word-break: break-word;',
+        '  border-radius: 0 8px 8px 0; padding: 6px 10px 0; margin-bottom: 8px;',
+        '  max-height: 61.8px; overflow: hidden; word-break: break-word;',
         '  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }',
         '.dsh-ann-quotes { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px;',
         '  max-height: 150px; overflow-y: auto; }',
@@ -144,7 +198,7 @@ window.__ModuleLoader__.load({
         '.dsh-ann-row { display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; }',
         '.dsh-ann-error { color: var(--dsw-alias-state-error-primary, #ff7a7a);',
         '  font-size: 12px; margin-top: 8px; word-break: break-word; }',
-        '.dsh-ann-hl { position: fixed; z-index: 900; background: rgba(255, 195, 0, .15);',
+        '.dsh-ann-hl, .dsh-ann-hl-preview { position: fixed; z-index: 900; background: rgba(255, 195, 0, .15);',
         '  border-radius: 2px; pointer-events: none; animation: dsh-ann-fadein .15s ease; }',
         '.dsh-ann-num { position: fixed; z-index: 940; display: inline-flex; align-items: center;',
         '  justify-content: center; min-width: 16px; height: 16px; padding: 0 4px;',
@@ -157,6 +211,30 @@ window.__ModuleLoader__.load({
         'body:has([role="dialog"][aria-modal="true"]) [data-annotation-overlay],',
         'body:has([role="dialog"][aria-modal="true"]) [data-annotation-num-layer] { display: none; }',
         '.dsh-ann-tip { animation: dsh-ann-pop .12s var(--ds-ease-in-out, ease); }',
+        // 浮窗里的批注原文是「跳到正文该处」的入口：hover 加下划线（颜色沿用
+        // label-tertiary，不额外变色），光标提示可点击。
+        '.dsh-ann-tip-jump { cursor: pointer; }',
+        '.dsh-ann-tip-jump:hover { text-decoration: underline; text-underline-offset: 2px; }',
+        // 浮窗跳转后的 2 秒落点高亮（CSS Custom Highlight，不影响宿主 DOM）。
+        '::highlight(dsh-ann-jump-flash) { background-color: rgba(255,195,0,.35); color: inherit; }',
+        // 「回到批注内容」箭头：只保留双 V，不画按钮底板。
+        '.dsh-ann-jump { position: fixed; z-index: 1205; display: inline-flex; align-items: center;',
+        '  justify-content: center; width: 44px; height: 28px; padding: 0;',
+        '  border: 0; background: transparent;',
+        '  color: var(--dsw-alias-label-primary, #ededee);',
+        '  cursor: pointer; }',
+        '.dsh-ann-jump:hover { color: var(--dsw-alias-text-accent, #4c9aff); }',
+        '.dsh-ann-jump svg { width: 16px; height: 16px; overflow: visible; }',
+        '.dsh-ann-jump svg path { transform-box: fill-box; transform-origin: center; }',
+        '.dsh-ann-jump-down svg path { animation: dsh-ann-chev-down 1.1s ease-in-out infinite; }',
+        '.dsh-ann-jump-down svg path:nth-child(2) { animation-delay: .22s; }',
+        '.dsh-ann-jump-up svg path { animation: dsh-ann-chev-up 1.1s ease-in-out infinite; }',
+        '.dsh-ann-jump-up svg path:nth-child(2) { animation-delay: .22s; }',
+        '@keyframes dsh-ann-chev-down { 0%, 100% { opacity: .55; transform: translateY(-2px); }',
+        '  50% { opacity: 1; transform: translateY(2px); } }',
+        '@keyframes dsh-ann-chev-up { 0%, 100% { opacity: .55; transform: translateY(2px); }',
+        '  50% { opacity: 1; transform: translateY(-2px); } }',
+        '@media (prefers-reduced-motion: reduce) { .dsh-ann-jump svg path { animation: none; } }',
         // 可交互浮层始终使用不透明主题底色；菜单 token 在新版宿主可能带 alpha，
         // 默认状态、键盘聚焦和鼠标悬停都不能让正文穿透影响可读性。
         '@keyframes dsh-ann-fadein { from { opacity: 0; } to { opacity: 1; } }',
@@ -175,7 +253,10 @@ window.__ModuleLoader__.load({
           already: '已批注',
           annotateTitle: '为选中的内容写一条批注',
           alreadyTitle: '这段内容已在批注清单中',
+          tags: '标签',
+          tagsTitle: '用标签快速批注选中的内容',
         },
+        tags: { add: '新增标签', del: '删除标签', placeholder: '新标签' },
         edit: {
           addTitle: '添加批注',
           editTitle: '编辑批注',
@@ -196,6 +277,7 @@ window.__ModuleLoader__.load({
           attachFail: '批注拼稿失败，消息将不带批注发送：',
           skipCommand: '本条是斜杠命令，未拼入批注；批注已保留，将随下一条消息发送',
           noSession: '无法确定当前会话，批注未拼入（已保留，将随下一条消息重试）',
+          tagsFail: '标签保存失败：无法连接 DSH Host（更新插件后需重启 DSH 才能持久化）',
         },
         block: {
           head: '我批注了以下 {n} 处内容（编号与原文对应），请针对它们回答我的问题：',
@@ -212,7 +294,10 @@ window.__ModuleLoader__.load({
           already: 'Annotated',
           annotateTitle: 'Write a note about the selected text',
           alreadyTitle: 'This passage is already in your annotation list',
+          tags: 'Tags',
+          tagsTitle: 'Quick-annotate the selection with a tag',
         },
+        tags: { add: 'Add tag', del: 'Delete tag', placeholder: 'New tag' },
         edit: {
           addTitle: 'Add annotation',
           editTitle: 'Edit annotation',
@@ -233,6 +318,7 @@ window.__ModuleLoader__.load({
           attachFail: 'Failed to attach annotations; the message will be sent without them: ',
           skipCommand: 'Slash command detected — annotations stay pending and will attach to your next message',
           noSession: 'Cannot determine the current session; annotations kept pending and will retry with your next message',
+          tagsFail: 'Failed to save tags: cannot reach the DSH Host (restart DSH after updating the plugin)',
         },
         block: {
           head: 'I annotated the following {n} passage(s) (the numbers match the quotes below); please respond to them when answering my question:',
@@ -249,7 +335,10 @@ window.__ModuleLoader__.load({
           already: 'Уже аннотировано',
           annotateTitle: 'Написать примечание к выделенному тексту',
           alreadyTitle: 'Этот фрагмент уже в списке аннотаций',
+          tags: 'Теги',
+          tagsTitle: 'Быстрая аннотация выделенного текста тегом',
         },
+        tags: { add: 'Добавить тег', del: 'Удалить тег', placeholder: 'Новый тег' },
         edit: {
           addTitle: 'Добавить аннотацию',
           editTitle: 'Изменить аннотацию',
@@ -272,6 +361,7 @@ window.__ModuleLoader__.load({
         toast: {
           attachFail: 'Не удалось собрать аннотации; сообщение уйдёт без них: ',
           skipCommand: 'Это слэш-команда — аннотации остаются в очереди и уйдут со следующим сообщением',
+          tagsFail: 'Не удалось сохранить теги: нет связи с DSH Host (перезапустите DSH после обновления плагина)',
         },
         // Разбор блока опирается на три вещи: заголовок начинается с BLOCK_HEADS.ru,
         // разделитель вопроса — block.marker, префикс примечания — notePrefix.
@@ -578,17 +668,6 @@ window.__ModuleLoader__.load({
       return out
     }
 
-    function allPositionsOf(el, quote) {
-      var full = el.textContent || ''
-      var out = []
-      var idx = full.indexOf(quote)
-      while (idx !== -1) {
-        out.push(idx)
-        idx = full.indexOf(quote, idx + 1)
-      }
-      return out
-    }
-
     function ctxScore(full, pos, len, ctx) {
       if (ctx === null) return 0
       var before = full.slice(Math.max(0, pos - 24), pos)
@@ -698,7 +777,47 @@ window.__ModuleLoader__.load({
       return null
     }
 
-    /** 定位批注的 Range：消息 seq 锚定优先，空白不敏感重搜兜底。 */
+    /** 在元素文本里找 quote 的最佳匹配：空白不敏感 + 上下文评分。
+     *  seqKey / rowHead / 全行扫描三条路径共用，避免各写一份扫描循环。 */
+    function matchIn(el, quote, ctx) {
+      var full = el.textContent || ''
+      var spans = allNormSpans(full, quote)
+      var best = null
+      var bestScore = -1
+      for (var i = 0; i < spans.length; i++) {
+        var range = rangeFromOffset(el, spans[i].start, spans[i].end - spans[i].start)
+        if (range === null) continue
+        var score = ctxScore(full, spans[i].start, spans[i].end - spans[i].start, ctx)
+        if (score > bestScore) { bestScore = score; best = range }
+      }
+      return best === null ? null : { range: best, score: bestScore }
+    }
+
+    /** 与保存时 textOffset 相差 ≤2 的匹配（容忍装饰文本造成的偏移漂移）。 */
+    function matchNearOffset(el, full, quote, offset) {
+      var span = findNormSpan(full, quote)
+      if (span === null || Math.abs(span.start - offset) > 2) return null
+      return rangeFromOffset(el, span.start, span.end - span.start)
+    }
+
+    /** 以保存的 ctxBefore 为锚，从它之后继续找 quote。 */
+    function matchAfterContext(el, full, quote, ctxBefore) {
+      var idx = full.indexOf(ctxBefore)
+      if (idx === -1) return null
+      var from = idx + ctxBefore.length
+      var span = findNormSpan(full.slice(from), quote)
+      if (span === null) return null
+      return rangeFromOffset(el, from + span.start, span.end - span.start)
+    }
+
+    /** 定位批注的 Range，按优先级逐级降落：
+     *  ① 文件预览（sourceUrl + 偏移 + 唯一匹配）
+     *  ② 仍存活的 live Range
+     *  ③ 消息 seq 锚点（textOffset → ctxBefore → 锚点内评分）
+     *  ④ 消息 rowHead 前缀匹配
+     *  ⑤ 全会话逐行扫描 + 上下文评分
+     *  ⑥ [data-chat-flow] 全文兜底
+     *  找到即返回；seqKey 分支内定位失败会终止（不跨消息模糊搜索，v1.3.6 纪律）。 */
     function locateQuote(quote, saved) {
       if (saved && saved.sourceUrl) {
         var bodies = document.querySelectorAll(DOCUMENT_TEXT)
@@ -739,35 +858,18 @@ window.__ModuleLoader__.load({
           if (item !== null) {
             var itText = item.textContent || ''
             if (saved.textOffset >= 0) {
-              var sp0 = findNormSpan(itText, quote)
-              if (sp0 !== null && Math.abs(sp0.start - saved.textOffset) <= 2) {
-                var itRange = rangeFromOffset(item, sp0.start, sp0.end - sp0.start)
-                if (itRange !== null) return itRange
-              }
+              var itRange = matchNearOffset(item, itText, quote, saved.textOffset)
+              if (itRange !== null) return itRange
             }
             if (saved.ctxBefore !== '') {
-              var itIdx = itText.indexOf(saved.ctxBefore)
-              if (itIdx !== -1) {
-                var itNear = itIdx + saved.ctxBefore.length
-                var sp1 = findNormSpan(itText.slice(itNear), quote)
-                if (sp1 !== null) {
-                  var itRange2 = rangeFromOffset(item, itNear + sp1.start, sp1.end - sp1.start)
-                  if (itRange2 !== null) return itRange2
-                }
-              }
+              var itRange2 = matchAfterContext(item, itText, quote, saved.ctxBefore)
+              if (itRange2 !== null) return itRange2
             }
             // 锚点消息内的全量扫描（空白不敏感 + 上下文评分）。
-            var spansIt = allNormSpans(itText, quote)
-            var bestIt = null
-            var bestItScore = -1
-            for (var pp2 = 0; pp2 < spansIt.length; pp2++) {
-              var rngIt = rangeFromOffset(item, spansIt[pp2].start, spansIt[pp2].end - spansIt[pp2].start)
-              if (rngIt === null) continue
-              var scIt = ctxScore(itText, spansIt[pp2].start, spansIt[pp2].end - spansIt[pp2].start,
-                { before: saved.ctxBefore || '', after: saved.ctxAfter || '' })
-              if (scIt > bestItScore) { bestItScore = scIt; bestIt = rngIt }
-            }
-            if (bestIt !== null && (saved.ctxBefore === '' || bestItScore > 0)) return bestIt
+            var bestIt = matchIn(item, quote, {
+              before: saved.ctxBefore || '', after: saved.ctxAfter || '',
+            })
+            if (bestIt !== null && (saved.ctxBefore === '' || bestIt.score > 0)) return bestIt.range
             // 锚点消息还在但原文匹配不上：先试批注芯片差异变体（「Annotation N」
             // vs「Annotation N：」）在**同一条消息内**宽松重定位——绝不跨消息
             // 模糊搜索（那是「跳到旧轮次」的根源，v1.3.6 纪律）。
@@ -791,68 +893,39 @@ window.__ModuleLoader__.load({
           var rowText = rows[r].textContent || ''
           if (rowText.slice(0, 24) !== saved.rowHead) continue
           if (saved.textOffset >= 0) {
-            var spR = findNormSpan(rowText, quote)
-            if (spR !== null && Math.abs(spR.start - saved.textOffset) <= 2) {
-              var range = rangeFromOffset(rows[r], spR.start, spR.end - spR.start)
-              if (range !== null) return range
-            }
+            var rowRange = matchNearOffset(rows[r], rowText, quote, saved.textOffset)
+            if (rowRange !== null) return rowRange
           }
           if (saved.ctxBefore !== '') {
-            var bIdx = rowText.indexOf(saved.ctxBefore)
-            if (bIdx !== -1) {
-              var near = bIdx + saved.ctxBefore.length
-              var spR2 = findNormSpan(rowText.slice(near), quote)
-              if (spR2 !== null) {
-                var range2 = rangeFromOffset(rows[r], near + spR2.start, spR2.end - spR2.start)
-                if (range2 !== null) return range2
-              }
-            }
+            var rowRange2 = matchAfterContext(rows[r], rowText, quote, saved.ctxBefore)
+            if (rowRange2 !== null) return rowRange2
           }
-          var spans = allNormSpans(rowText, quote)
-          var bestRow = null
-          var bestRowScore = -1
-          for (var pp = 0; pp < spans.length; pp++) {
-            var rng = rangeFromOffset(rows[r], spans[pp].start, spans[pp].end - spans[pp].start)
-            if (rng === null) continue
-            var sc = ctxScore(rowText, spans[pp].start, spans[pp].end - spans[pp].start,
-              saved !== undefined && saved !== null
-                ? { before: saved.ctxBefore || '', after: saved.ctxAfter || '' }
-                : null)
-            if (sc > bestRowScore) { bestRowScore = sc; bestRow = rng }
-          }
-          if (bestRow !== null) return bestRow
+          var bestRow = matchIn(rows[r], quote, {
+            before: saved.ctxBefore || '', after: saved.ctxAfter || '',
+          })
+          if (bestRow !== null) return bestRow.range
         }
       }
-      var ctx = saved !== undefined && saved !== null
+      var ctx = saved !== undefined && saved !== null && (saved.ctxBefore || saved.ctxAfter)
         ? { before: saved.ctxBefore || '', after: saved.ctxAfter || '' }
         : null
       var best = null
       var bestScore = -1
       for (var i = 0; i < rows.length; i++) {
-        var full = rows[i].textContent || ''
-        var spans = allNormSpans(full, quote)
-        for (var p = 0; p < spans.length; p++) {
-          var range = rangeFromOffset(rows[i], spans[p].start, spans[p].end - spans[p].start)
-          if (range === null) continue
-          var score = ctxScore(full, spans[p].start, spans[p].end - spans[p].start, ctx)
-          if (score > bestScore) { bestScore = score; best = range }
+        var rowMatch = matchIn(rows[i], quote, ctx)
+        if (rowMatch !== null && rowMatch.score > bestScore) {
+          bestScore = rowMatch.score
+          best = rowMatch.range
         }
       }
       if (best !== null && (ctx === null || bestScore > 0)) return best
       var flow = document.querySelector('[data-chat-flow]')
       if (flow === null) flow = document.querySelector('[data-focus-flow]')
       if (flow !== null) {
-        var full2 = flow.textContent || ''
-        var positions2 = allPositionsOf(flow, quote)
-        var best2 = null
-        var bestScore2 = -1
-        for (var q2 = 0; q2 < positions2.length; q2++) {
-          var range2 = rangeFromOffset(flow, positions2[q2], quote.length)
-          if (range2 === null) continue
-          var score2 = ctxScore(full2, positions2[q2], quote.length, ctx)
-          if (score2 > bestScore2) { bestScore2 = score2; best2 = range2 }
-        }
-        if (best2 !== null && (ctx === null || bestScore2 > 0)) return best2
+        // 行选择器漏掉某些消息时（例如步骤体结构变化），全文兜底必须和
+        // 行扫描一样忽略空白：严格 indexOf 会被换行/缩进差异挡住。
+        var bestFlow = matchIn(flow, quote, ctx)
+        if (bestFlow !== null && (ctx === null || bestFlow.score > 0)) return bestFlow.range
       }
       return null
     }
@@ -880,7 +953,7 @@ window.__ModuleLoader__.load({
       return { left: Math.round(left), top: Math.round(Math.max(8, top)) }
     }
 
-    function svg(paths, viewBox) {
+    function svg(paths, viewBox, fillRule) {
       var s = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
       s.setAttribute('viewBox', viewBox)
       s.setAttribute('fill', 'none')
@@ -889,6 +962,7 @@ window.__ModuleLoader__.load({
         var p = document.createElementNS('http://www.w3.org/2000/svg', 'path')
         p.setAttribute('d', paths[i])
         p.setAttribute('fill', 'currentColor')
+        if (fillRule !== undefined) p.setAttribute('fill-rule', fillRule)
         s.appendChild(p)
       }
       return s
@@ -896,6 +970,11 @@ window.__ModuleLoader__.load({
     var ICONS = {
       plus: function () {
         return svg(['M8.64453 1.5V7.34961H14.5V8.65039H8.64453V14.5H7.34473V8.65039H1.5V7.34961H7.34473V1.5H8.64453Z'], '0 0 16 16')
+      },
+      tag: function () {
+        return svg([
+          'M2 3.5C2 2.67 2.67 2 3.5 2h4.2c.4 0 .78.16 1.06.44l5.3 5.3c.59.59.59 1.54 0 2.13l-5.3 5.3c-.59.59-1.54.59-2.13 0l-5.3-5.3A1.5 1.5 0 0 1 2 8.8V3.5ZM5.6 4.7a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z',
+        ], '0 0 16 16', 'evenodd')
       },
       check: function () {
         return svg([
@@ -916,6 +995,18 @@ window.__ModuleLoader__.load({
       trash: function () {
         return svg([
           'M14.4782 4.84067L14.2138 10.1152C14.1102 12.1872 14.067 13.0115 13.3866 13.9607C13.1044 14.3546 12.7498 14.6912 12.3424 14.9535C11.8239 15.2872 11.2415 15.4316 10.5585 15.4998C9.88727 15.5668 9.04946 15.5656 7.99998 15.5656C6.95051 15.5656 6.1127 15.5668 5.44142 15.4998C4.75851 15.4316 4.17602 15.2872 3.65753 14.9535C3.25012 14.6912 2.89559 14.3546 2.61332 13.9607C1.93296 13.0115 1.88979 12.1872 1.78619 10.1152L1.52179 4.84067L2.89006 4.77277L3.15343 10.0463C3.26221 12.2218 3.32452 12.6015 3.72646 13.1624C3.90825 13.4161 4.13686 13.6334 4.39927 13.8023C4.66204 13.9714 5.00263 14.0792 5.57825 14.1367C6.16562 14.1953 6.92298 14.1963 7.99998 14.1963C9.07699 14.1963 9.83434 14.1953 10.4217 14.1367C10.9973 14.0792 11.3379 13.9714 11.6007 13.8023C11.8631 13.6334 12.0917 13.4161 12.2735 13.1624C12.6755 12.6015 12.7378 12.2218 12.8465 10.0463L13.1099 4.77277L14.4782 4.84067ZM5.43011 6.22849H6.7994V11.3909H5.43011V6.22849ZM9.20056 6.22849H10.5699V11.3909H9.20056V6.22849ZM8.53597 0.434431C9.17976 0.434431 9.6522 0.426926 10.0966 0.571258C10.2357 0.616451 10.3717 0.672554 10.502 0.738948C10.9182 0.951107 11.2464 1.29099 11.7015 1.74612L12.4978 2.54136H15.3742V3.91169H0.625732V2.54136H3.50218L4.29845 1.74612C4.75358 1.29099 5.08174 0.951107 5.49801 0.738948C5.62831 0.672554 5.76425 0.616451 5.90334 0.571258C6.34776 0.426926 6.82021 0.434431 7.46399 0.434431H8.53597ZM7.46399 1.80476C6.73208 1.80476 6.51641 1.81187 6.32617 1.87369C6.25545 1.89667 6.18668 1.92533 6.12041 1.95907C5.96398 2.03878 5.82348 2.16253 5.44142 2.54136H10.5585C10.1765 2.16253 10.036 2.03878 9.87955 1.95907C9.81329 1.92533 9.74452 1.89667 9.6738 1.87369C9.48356 1.81187 9.26789 1.80476 8.53597 1.80476H7.46399Z',
+        ], '0 0 16 16')
+      },
+      arrowUp: function () {
+        return svg([
+          'M8 7.2L1.6 13.6L2.9 14.9L8 9.8L13.1 14.9L14.4 13.6L8 7.2Z',
+          'M8 1.4L1.6 7.8L2.9 9.1L8 4L13.1 9.1L14.4 7.8L8 1.4Z',
+        ], '0 0 16 16')
+      },
+      arrowDown: function () {
+        return svg([
+          'M8 8.8L1.6 2.4L2.9 1.1L8 6.2L13.1 1.1L14.4 2.4L8 8.8Z',
+          'M8 14.6L1.6 8.2L2.9 6.9L8 12L13.1 6.9L14.4 8.2L8 14.6Z',
         ], '0 0 16 16')
       },
     }
@@ -1078,8 +1169,70 @@ window.__ModuleLoader__.load({
         busy: false,
         lastKey: '',
         pendingAnchor: null,
+        // settle 时缓存的选区 Range：点击工具条按钮的瞬间浏览器已经清掉选区。
+        // 进入编辑浮窗后它就是「待批注」预览高亮的 Range（同时用于抓保存锚点）。
+        selectionRange: null,
+        // 点过「批注」或「标签」按钮后才显示预览高亮（工具条刚出现时不显示，
+        // 避免与浏览器默认的选区渲染重叠）；关闭工具条时复位。
+        previewArmed: false,
         el: null,
       }
+
+      // ---------- 快捷标签 ----------
+      // 标签持久化在 Host 端独立 JSON 文件（/annotation-tags 路由读写）；
+      // 默认 Yes / No 不落盘、无变更不建文件。路由不可用时退回默认标签。
+      var DEFAULT_TAGS = ['Yes', 'No']
+      var annotationTags = DEFAULT_TAGS.slice()
+      var tagPanelOpen = false
+      var tagBusy = false
+
+      function applyTags(list) {
+        if (!Array.isArray(list)) return
+        var next = []
+        for (var i = 0; i < list.length; i++) {
+          if (typeof list[i] === 'string' && list[i] !== '') next.push(list[i])
+        }
+        annotationTags = next
+        if (ui.mode === 'actions' && tagPanelOpen) refreshTagPanel()
+        renderMarkers()
+      }
+
+      function loadAnnotationTags() {
+        try {
+          fetch('/annotation-tags', { credentials: 'same-origin' }).then(function (res) {
+            if (!res.ok) throw new Error('HTTP ' + res.status)
+            return res.json()
+          }).then(function (data) {
+            if (data !== null && typeof data === 'object') applyTags(data.tags)
+          }).catch(function () { /* 路由不可用：保留默认标签 */ })
+        } catch (_) { /* 没有 fetch */ }
+      }
+
+      function mutateTags(action, tag) {
+        if (tagBusy) return
+        tagBusy = true
+        try {
+          fetch('/annotation-tags', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ action: action, tag: tag }),
+          }).then(function (res) {
+            if (!res.ok) throw new Error('HTTP ' + res.status)
+            return res.json()
+          }).then(function (data) {
+            tagBusy = false
+            if (data !== null && typeof data === 'object') applyTags(data.tags)
+          }).catch(function () {
+            tagBusy = false
+            showToast(t('toast.tagsFail'))
+          })
+        } catch (_) {
+          tagBusy = false
+          showToast(t('toast.tagsFail'))
+        }
+      }
+      loadAnnotationTags()
 
       function readPendingQuotes(sessionId) {
         if (sessionId === undefined) return []
@@ -1180,7 +1333,17 @@ window.__ModuleLoader__.load({
           ui.mode = 'closed'
           ui.lastKey = ''
         }
-        if (ui.mode === 'editing' || ui.mode === 'composing' || ignoreUntil > Date.now()) return
+        if (ui.mode === 'editing' || ui.mode === 'composing') return
+        if (ignoreUntil > Date.now()) {
+          // 点击工具条按钮会短暂屏蔽 selectionchange；屏蔽期内发生的重选不能丢
+          // （例如点 X 关闭浮窗后立刻重新选中原文）——屏蔽结束后再评估一次。
+          clearSettle()
+          settleTimer = setTimeout(function () {
+            settleTimer = null
+            onSelection()
+          }, ignoreUntil - Date.now() + 10)
+          return
+        }
         var sel = window.getSelection()
         if (sel === null || sel.isCollapsed || sel.rangeCount === 0) {
           clearSettle()
@@ -1228,6 +1391,7 @@ window.__ModuleLoader__.load({
           var p = placeAbove(rect, 40)
           if (ui.mode === 'actions' && ui.quote === text && (ui.source && ui.source.sourceUrl) === (source && source.sourceUrl)) {
             ui.lastKey = key
+            ui.selectionRange = r.cloneRange()
             ui.pos = p
             if (ui.el !== null && ui.el.style) {
               ui.el.style.left = p.left + 'px'
@@ -1235,11 +1399,14 @@ window.__ModuleLoader__.load({
             }
             return
           }
+          // 新选区出现工具条时先不显示预览；点过「批注/标签」后由 previewArmed 打开。
+          ui.previewArmed = false
           ui.lastKey = key
           ui.mode = 'actions'
           ui.quote = text
           ui.source = source
           ui.selectionRoot = rootEl
+          ui.selectionRange = r.cloneRange()
           ui.error = null
           ui.pos = p
           render()
@@ -1255,6 +1422,8 @@ window.__ModuleLoader__.load({
       host.addEventListener('pointerdown', onHostPointerDown)
 
       function onDocPointerDown(e) {
+        // 「回到批注内容」箭头在 host 之外，点击它不能把工具条关掉。
+        if (e.target instanceof Element && e.target.closest('[data-annotation-jump]')) return
         if (ui.mode === 'actions' && !host.contains(e.target) && !overlay.contains(e.target)) {
           closeToolbar()
         }
@@ -1269,7 +1438,8 @@ window.__ModuleLoader__.load({
         anchorRaf = true
         requestAnimationFrame(function () {
           anchorRaf = false
-          if (ui.quotes.length > 0) renderMarkers()
+          // 工具条显示（actions）或新增批注编辑浮窗显示时，选区预览也要跟随滚动重画。
+          if (ui.quotes.length > 0 || previewActive()) renderMarkers()
           updateChip()
           if (ui.mode === 'editing' && ui.el !== null) positionEditor(ui.el, ui.pos.left, ui.pos.top)
           if (ui.mode !== 'actions' || ui.quote === '') return
@@ -1283,9 +1453,11 @@ window.__ModuleLoader__.load({
               rect = live.getBoundingClientRect()
             }
           }
-          if (rect === null) {
-            var range = locateQuote(ui.quote, ui.source)
-            if (range !== null) rect = range.getBoundingClientRect()
+          if (rect === null && ui.selectionRange !== null) {
+            // 点击工具条按钮后浏览器会清掉实时选区：用 settle 缓存的 Range 定位，
+            // 不要退回 locateQuote（按文本重定位可能命中文档里更早的相同文本，
+            // 工具条会突然跳到页面顶部）。
+            try { rect = ui.selectionRange.getBoundingClientRect() } catch (_) { rect = null }
           }
           if (rect === null || rect.width === 0 || rect.height === 0) {
             if (lostSince === 0) lostSince = Date.now()
@@ -1303,6 +1475,10 @@ window.__ModuleLoader__.load({
               render()
             }
           }
+          if (ui.el !== null) {
+            applyBarClamp(ui.el)
+            updateJumpButton()
+          }
         })
       }
       window.addEventListener('scroll', onLayoutChange, true)
@@ -1316,6 +1492,7 @@ window.__ModuleLoader__.load({
           if (el.closest('[data-composer-card]') || el.closest('[data-input-scroll]')
             || el.closest('[data-annotation-for-dsh]') || el.closest('[data-annotation-overlay]')
             || el.closest('[data-annotation-num-layer]')
+            || el.closest('[data-annotation-jump]')
             || el.closest('[data-annotation-chip]') || el.closest('[data-annotation-tip-layer]')) {
             continue
           }
@@ -1323,8 +1500,20 @@ window.__ModuleLoader__.load({
         }
         return false
       }
+      // 宿主 DOM 结构/文本变化的序号：批注定位失败后，只有 DOM 再变化（加载更早、
+      // 消息重渲染等）才值得重跑全量文本扫描；滚动本身不改 DOM，不该每帧重扫长会话。
+      var domMutationSeq = 0
       var observer = new MutationObserver(function (mutations) {
         if (!mutationRelevant(mutations)) return
+        domMutationSeq++
+        // 结构变化（消息行插入/移除、视图重建）会让宿主几何缓存里的元素
+        // 引用失效；characterData/attributes 批次不改变元素集合，不失效缓存，
+        // 否则流式期间每个 token 都会把每帧查询重新做一遍。
+        var hasRowInsert = false
+        for (var i = 0; i < mutations.length; i++) {
+          if (mutations[i].type === 'childList') { hasRowInsert = true; break }
+        }
+        if (hasRowInsert) invalidateHostLocalRects()
         onLayoutChange()
         // 只有「消息行插入」批次才同步执行气泡装饰（隐藏批注块 + 贴标签）：
         // MutationObserver 回调在微任务阶段运行，早于浏览器绘制，
@@ -1334,10 +1523,6 @@ window.__ModuleLoader__.load({
         // 就携带完整批注块，逐一触发全文档扫描（decorateAll 是 querySelectorAll +
         // 每行子树查询 + textContent，成本随会话长度线性增长）会在长会话上白白
         // 烧主线程；漏网场景由下方 1s 兜底轮询覆盖。
-        var hasRowInsert = false
-        for (var i = 0; i < mutations.length; i++) {
-          if (mutations[i].type === 'childList') { hasRowInsert = true; break }
-        }
         if (hasRowInsert) {
           scheduleDecorateAll()
           return
@@ -1470,18 +1655,68 @@ window.__ModuleLoader__.load({
         if (ui.mode === 'actions') {
           var bar = document.createElement('div')
           bar.className = 'dsh-ann-bar'
-          bar.style.left = ui.pos.left + 'px'
-          bar.style.top = ui.pos.top + 'px'
+          // 防御：位置未初始化/失效时用缓存选区重算（不调用 locateQuote，避免重入/中断渲染）。
+          var pos = ui.pos
+          var posValid = pos !== null && pos !== undefined && isFinite(pos.left) && isFinite(pos.top)
+          if (!posValid || (pos.left === 0 && pos.top === 0 && ui.quote !== '')) {
+            var cachedRange = ui.selectionRange
+            var cachedRect = null
+            try { cachedRect = cachedRange !== null ? cachedRange.getBoundingClientRect() : null } catch (_) { cachedRect = null }
+            if (cachedRect !== null && cachedRect.width > 0 && cachedRect.height > 0) {
+              pos = placeAbove(cachedRect, 40)
+              ui.pos = pos
+              posValid = true
+            }
+          }
+          if (posValid) {
+            bar.style.left = pos.left + 'px'
+            bar.style.top = pos.top + 'px'
+          }
           var already = ui.quotes.some(function (q) { return q.text === ui.quote && (q.sourceUrl || '') === (ui.source && ui.source.sourceUrl || '') })
-          bar.appendChild(ghostButton(
+          var annotateBtn = ghostButton(
             already ? null : ICONS.plus,
             already ? t('actions.already') : t('actions.annotate'),
             already ? t('actions.alreadyTitle') : t('actions.annotateTitle'),
             already,
             enterEditing,
-          ))
+          )
+          // 面板处于展开态时进入 actions（例如重建）：批注按钮保持压暗。
+          if (tagPanelOpen) annotateBtn.classList.add('dsh-ann-ghost-dim')
+          bar.appendChild(annotateBtn)
+          // 标签入口：细线分隔 + 紧凑图标按钮，点击展开/收起浮岛标签。
+          var split = document.createElement('span')
+          split.className = 'dsh-ann-split'
+          split.setAttribute('aria-hidden', 'true')
+          bar.appendChild(split)
+          // 标签入口用 div[role=button] 而非原生 <button>：工具条里只保留「批注」
+          // 一个原生 button，宿主 e2e 的 `.dsh-ann-bar button` 选择器不会命中多个。
+          var tagToggle = document.createElement('div')
+          tagToggle.className = 'dsh-ann-tag-toggle'
+          tagToggle.setAttribute('role', 'button')
+          tagToggle.setAttribute('tabindex', '0')
+          tagToggle.title = t('actions.tagsTitle')
+          tagToggle.setAttribute('aria-label', t('actions.tags'))
+          tagToggle.setAttribute('aria-expanded', tagPanelOpen ? 'true' : 'false')
+          tagToggle.appendChild(ICONS.tag())
+          function activateTagToggle() {
+            ignoreUntil = Date.now() + 80
+            toggleTagPanel()
+          }
+          tagToggle.addEventListener('click', activateTagToggle)
+          tagToggle.addEventListener('keydown', function (e) {
+            if (e.key !== 'Enter' && e.key !== ' ') return
+            e.preventDefault()
+            activateTagToggle()
+          })
+          bar.appendChild(tagToggle)
+          if (tagPanelOpen) bar.appendChild(tagPanel())
           host.appendChild(bar)
           ui.el = bar
+          if (tagPanelOpen) {
+            requestAnimationFrame(function () {
+              if (bar.isConnected) clampBarToViewport(bar)
+            })
+          }
         } else if (ui.mode === 'editing') {
           var card = document.createElement('div')
           card.className = 'dsh-ann-card'
@@ -1553,6 +1788,504 @@ window.__ModuleLoader__.load({
             if (card.isConnected) positionEditor(card, ui.pos.left, ui.pos.top)
           })
         }
+        requestAnimationFrame(function () {
+          if (ui.mode === 'actions' && ui.el !== null) applyBarClamp(ui.el)
+          updateJumpButton()
+        })
+      }
+
+      // ---------- 「回到批注内容」箭头 ----------
+      // 工具条停靠上/下沿时，或编辑框里的原文被裁剪/滚出视口时出现；点击回跳。
+      var JUMP_GAP = 48
+      var jumpBtn = null
+      var jumpDir = ''
+
+      function ensureJumpButton() {
+        if (jumpBtn !== null) return jumpBtn
+        var btn = document.createElement('button')
+        btn.type = 'button'
+        btn.className = 'dsh-ann-jump'
+        btn.setAttribute('data-annotation-jump', '')
+        btn.style.display = 'none'
+        btn.addEventListener('click', jumpToTarget)
+        document.body.appendChild(btn)
+        jumpBtn = btn
+        return btn
+      }
+
+      function hideJumpButton() {
+        if (jumpBtn !== null) jumpBtn.style.display = 'none'
+        jumpDir = ''
+      }
+
+      /** 显示箭头：停靠时贴浮窗内侧（上沿→下方朝上 / 下沿→上方朝下），
+       *  否则按目标相对浮窗的方向贴边。 */
+      function showJumpButton(dir, anchor, edge) {
+        var btn = ensureJumpButton()
+        var placement = jumpPlacement(edge, dir, anchor)
+        var centerX = anchor.width > 0 ? anchor.left + anchor.width / 2 : window.innerWidth / 2
+        var left = centerX - 22
+        var top = Math.max(8, Math.min(placement.top, window.innerHeight - 32))
+        btn.className = 'dsh-ann-jump ' + (placement.dir === 'up' ? 'dsh-ann-jump-up' : 'dsh-ann-jump-down')
+        btn.style.left = left + 'px'
+        btn.style.top = top + 'px'
+        btn.style.bottom = ''
+        if (jumpDir !== placement.dir) {
+          jumpDir = placement.dir
+          btn.textContent = ''
+          btn.appendChild(placement.dir === 'up' ? ICONS.arrowUp() : ICONS.arrowDown())
+        }
+        btn.title = t('tip.jump')
+        btn.setAttribute('aria-label', t('tip.jump'))
+        btn.style.display = 'inline-flex'
+      }
+
+      /** 仍存活的 settle 选区 Range；失效时返回 null。 */
+      function liveSelectionRange() {
+        if (ui.selectionRange === null) return null
+        try {
+          return ui.selectionRange.startContainer !== null && ui.selectionRange.startContainer.isConnected
+            ? ui.selectionRange
+            : null
+        } catch (_) { return null }
+      }
+
+      /** 选区 Range 失效时退回文本锚点重定位。 */
+      function fallbackJumpRange() {
+        var live = liveSelectionRange()
+        if (live !== null) return live
+        return ui.pendingAnchor !== null ? locateQuote(ui.quote, ui.pendingAnchor) : null
+      }
+
+      function jumpRangeForEditing() {
+        if (ui.editingId !== null) {
+          for (var i = 0; i < ui.quotes.length; i++) {
+            if (ui.quotes[i].id === ui.editingId) return locateQuoteCached(ui.quotes[i])
+          }
+          return null
+        }
+        return fallbackJumpRange()
+      }
+
+      function jumpTargetRange() {
+        if (ui.mode === 'editing') return jumpRangeForEditing()
+        if (ui.mode !== 'actions') return null
+        return fallbackJumpRange()
+      }
+
+      /** 目标与浮窗的垂直间距（仅 actions 用来判断离得远不远）。 */
+      function jumpGap(target, anchor) {
+        if (target === null || anchor === null) return -1
+        if (target.bottom < anchor.top) return anchor.top - target.bottom
+        if (target.top > anchor.bottom) return target.top - anchor.bottom
+        return 0
+      }
+
+      /** 目标在浮窗上方还是下方。 */
+      function jumpDirection(target, anchor) {
+        if (target === null || anchor === null) return ''
+        return (target.top + target.height / 2) < (anchor.top + anchor.height / 2) ? 'up' : 'down'
+      }
+
+      /** 箭头位置与方向：工具条停在上沿时放到浮窗下方、图标朝上；停在下沿
+       *  时放到浮窗上方、图标朝下；否则按原文相对浮窗的方向贴边。 */
+      function jumpPlacement(edge, dir, anchor) {
+        if (edge === 'top') return { dir: 'up', top: anchor.bottom + 4 }
+        if (edge === 'bottom') return { dir: 'down', top: anchor.top - 32 }
+        return {
+          dir: dir,
+          top: dir === 'up' ? anchor.top - 32 : anchor.bottom + 4,
+        }
+      }
+
+      /** 工具条当前停在上沿还是下沿。 */
+      function jumpEdge(anchor) {
+        var view = conversationViewEl()
+        if (view !== null && typeof view.getBoundingClientRect === 'function') {
+          var viewRect = view.getBoundingClientRect()
+          if (viewRect.height > 0 && Math.abs(anchor.top - (viewRect.top + 8)) <= 2) return 'top'
+        }
+        var composers = hostComposerRects()
+        for (var i = 0; i < composers.length; i++) {
+          if (Math.abs(anchor.bottom - (composers[i].top - 8)) <= 2) return 'bottom'
+        }
+        return ''
+      }
+
+      /** 标签面板展开/收起时工具条宽度在过渡：持续刷新箭头，保持中轴对齐。 */
+      function trackBarWidth() {
+        var start = typeof performance !== 'undefined' ? performance.now() : Date.now()
+        function tick() {
+          if (ui.mode !== 'actions' || ui.el === null) return
+          updateJumpButton()
+          var now = typeof performance !== 'undefined' ? performance.now() : Date.now()
+          if (now - start < 460) requestAnimationFrame(tick)
+        }
+        requestAnimationFrame(tick)
+      }
+
+      function updateJumpButton() {
+        if (ui.mode === 'closed' || ui.el === null) { hideJumpButton(); return }
+        var range = jumpTargetRange()
+        if (range === null) { hideJumpButton(); return }
+        var target = null
+        var anchor = null
+        try { target = range.getBoundingClientRect() } catch (_) { target = null }
+        try { anchor = ui.el.getBoundingClientRect() } catch (_) { anchor = null }
+        if (target === null || anchor === null || target.width === 0 || target.height === 0) {
+          hideJumpButton()
+          return
+        }
+        var offscreen = target.bottom < 0 || target.top > window.innerHeight
+        // 目标被输入区/会话头部遮住时也要显示：工具条可能正停在边界，
+        // 编辑框里的原文也可能已经看不见了。
+        var composers = hostComposerRects()
+        var headers = hostHeaderRects()
+        var holes = composers.concat(headers)
+        var blocked = false
+        for (var i = 0; i < holes.length; i++) {
+          var h = holes[i]
+          if (target.right <= h.left || target.left >= h.right) continue
+          if (target.bottom <= h.top || target.top >= h.bottom) continue
+          blocked = true
+          break
+        }
+        var edge = ui.mode === 'actions' ? jumpEdge(anchor) : ''
+        // 工具条只在停靠上/下沿时显示箭头；普通跟随状态不显示。
+        if (ui.mode === 'actions' && edge === '') { hideJumpButton(); return }
+        if (ui.mode === 'editing') {
+          // 编辑框：原文仍可见、没有被输入区/头部挡住时不显示箭头。
+          if (!offscreen && !blocked) { hideJumpButton(); return }
+        } else if (!offscreen && !blocked && jumpGap(target, anchor) <= JUMP_GAP) {
+          hideJumpButton()
+          return
+        }
+        showJumpButton(jumpDirection(target, anchor), anchor, edge)
+      }
+
+      function jumpToTarget() {
+        var range = jumpTargetRange()
+        if (range !== null && scrollRangeIntoView(range)) {
+          onLayoutChange()
+          return
+        }
+        showToast(t('toast.jumpLost'))
+      }
+
+      /** 工具条停在遮挡区洞口朝向正文的一侧：头部下方、输入区上方。
+       *  按遮挡区处在视口上半/下半判断朝向（底部输入区只推到上方，顶部
+       *  头部只推到下方），不跟随工具条自身在洞内的位置。 */
+      function clampBarTop(rect, holes, viewportHeight) {
+        var top = rect.top
+        var height = rect.height
+        for (var i = 0; i < holes.length; i++) {
+          var h = holes[i]
+          if (rect.left >= h.right || rect.right <= h.left) continue
+          if (rect.top >= h.bottom || rect.bottom <= h.top) continue
+          var below = h.top + h.height / 2 > viewportHeight / 2
+          top = below ? h.top - height - 8 : h.bottom + 8
+        }
+        return Math.max(8, Math.min(top, viewportHeight - height - 8))
+      }
+
+      function applyBarClamp(bar) {
+        if (bar === null || bar === undefined || typeof bar.getBoundingClientRect !== 'function') return
+        var rect = bar.getBoundingClientRect()
+        // 输入区（composerStack）上沿是硬上限：无论工具条与洞是否相交，都不能
+        // 进入输入区。头部/输入区命中时 clampBarTop 先给出正文侧边界。
+        var composers = hostComposerRects()
+        var top = clampBarTop(rect, composers.concat(hostHeaderRects()), window.innerHeight)
+        for (var i = 0; i < composers.length; i++) {
+          var c = composers[i]
+          if (rect.left >= c.right || rect.right <= c.left) continue
+          top = Math.min(top, c.top - rect.height - 8)
+        }
+        // 顶部栏下沿：正文滚动区上沿作为上边界；不再用它的 bottom，因为输入区
+        // 可能覆盖滚动区底部。
+        var view = conversationViewEl()
+        if (view !== null && typeof view.getBoundingClientRect === 'function') {
+          var viewRect = view.getBoundingClientRect()
+          if (viewRect.width > 0 && viewRect.height > 0) top = Math.max(top, viewRect.top + 8)
+        }
+        top = Math.max(8, Math.min(top, window.innerHeight - rect.height - 8))
+        if (top === ui.pos.top) return
+        ui.pos.top = top
+        bar.style.top = top + 'px'
+      }
+
+      /** 展开/收起标签面板：只增删面板本身，不重建整条工具条——重建会把
+       *  「批注」按钮连同 bar 一起换掉，视觉上闪一下。 */
+      function toggleTagPanel() {
+        tagPanelOpen = !tagPanelOpen
+        // 点过「标签」按钮后预览高亮保持（展开、收起都显示），与编辑浮窗一致。
+        ui.previewArmed = true
+        paintPreviewHighlight()
+        // 点击工具条按钮会短暂清掉选区/触发 selectionchange：先取消挂起的 settle
+        // 并延长忽略窗口，避免刚展开的面板立即被重建（工具条闪走/面板消失）。
+        clearSettle()
+        ignoreUntil = Date.now() + 200
+        var bar = ui.el
+        if (bar === null || bar === undefined) {
+          render()
+          return
+        }
+        var toggle = bar.querySelector('.dsh-ann-tag-toggle')
+        var annotate = bar.querySelector('.dsh-ann-ghost')
+        var panel = bar.querySelector('.dsh-ann-tags')
+        if (tagPanelOpen) {
+          if (panel !== null && panel.__annClosing === true) {
+            // 收起动画进行中又点了展开：取消收起，从当前收窄宽度平滑续开到内容宽度。
+            panel.__annClosing = false
+            if (panel.__annTimer !== null) { clearTimeout(panel.__annTimer); panel.__annTimer = null }
+            var resumeWidth = Math.round(panel.getBoundingClientRect().width)
+            panel.style.overflow = 'hidden'
+            panel.style.maxWidth = resumeWidth + 'px'
+            panel.style.transition = 'max-width .2s linear, opacity .12s linear'
+            requestAnimationFrame(function () {
+              if (!panel.isConnected) return
+              panel.style.maxWidth = panel.scrollWidth + 'px'
+              panel.style.opacity = '1'
+            })
+            setTimeout(function () {
+              if (!panel.isConnected) return
+              panel.style.maxWidth = 'none'
+              panel.style.overflow = 'visible'
+              panel.style.transition = 'none'
+              clampBarToViewport(bar)
+            }, 240)
+          } else if (panel === null) {
+            // 逐渐展开：先以 0 宽插入，量出内容宽度后用 max-width transition
+            // 撑开——工具条宽度随之逐帧增长，浮岛内容本身不做逐个动画。
+            panel = tagPanel()
+            panel.style.maxWidth = '0px'
+            panel.style.opacity = '0'
+            panel.style.overflow = 'hidden'
+            bar.appendChild(panel)
+            var targetWidth = panel.scrollWidth
+            var reduceMotion = false
+            try {
+              reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+            } catch (_) { /* 默认播放动画 */ }
+            if (reduceMotion || targetWidth <= 0) {
+              panel.style.maxWidth = 'none'
+              panel.style.overflow = 'visible'
+              panel.style.opacity = '1'
+            } else {
+              panel.style.transition = 'max-width .24s linear, opacity .18s linear'
+              requestAnimationFrame(function () {
+                if (!panel.isConnected) return
+                panel.style.maxWidth = targetWidth + 'px'
+                panel.style.opacity = '1'
+              })
+              // 展开完成后放开宽度与裁剪：hover 删除叉可以溢出到面板外。
+              var settle = function () {
+                if (!panel.isConnected) return
+                panel.style.maxWidth = 'none'
+                panel.style.overflow = 'visible'
+                panel.style.transition = 'none'
+                clampBarToViewport(bar)
+              }
+              panel.addEventListener('transitionend', function onEnd(ev) {
+                if (ev.target !== panel || ev.propertyName !== 'max-width') return
+                panel.removeEventListener('transitionend', onEnd)
+                settle()
+              })
+              // 兜底：transition 被跳过/中断时也要恢复可用状态。
+              setTimeout(settle, 360)
+            }
+          }
+          if (toggle !== null) toggle.setAttribute('aria-expanded', 'true')
+          // 压暗「批注」按钮：暗示此刻在「标签 / 批注」里二选一。
+          if (annotate !== null) annotate.classList.add('dsh-ann-ghost-dim')
+          // 面板把工具条向右撑宽：展开后整条重新钳回视口内。
+          requestAnimationFrame(function () {
+            if (bar.isConnected) clampBarToViewport(bar)
+          })
+        } else {
+          if (panel !== null && panel.__annClosing !== true) {
+            // 逐渐缩回：先把当前宽度固定住，再 transition 到 0 宽/透明，
+            // 动画结束才从 DOM 移除；期间再点展开会取消收起、平滑续开。
+            panel.__annClosing = true
+            panel.style.overflow = 'hidden'
+            panel.style.maxWidth = Math.round(panel.getBoundingClientRect().width) + 'px'
+            panel.style.transition = 'max-width .22s linear, opacity .16s linear'
+            var removePanel = function () {
+              // 收起途中又被展开时（__annClosing 已被复位），这里的旧回调必须失效。
+              if (panel.__annClosing !== true) return
+              if (!panel.isConnected) return
+              if (panel.__annTimer !== null) { clearTimeout(panel.__annTimer); panel.__annTimer = null }
+              panel.remove()
+            }
+            panel.__annTimer = setTimeout(removePanel, 300)
+            panel.addEventListener('transitionend', function onEnd(ev) {
+              if (ev.target !== panel || ev.propertyName !== 'max-width') return
+              panel.removeEventListener('transitionend', onEnd)
+              removePanel()
+            })
+            requestAnimationFrame(function () {
+              if (!panel.isConnected) return
+              panel.style.maxWidth = '0px'
+              panel.style.opacity = '0'
+            })
+          }
+          if (toggle !== null) toggle.setAttribute('aria-expanded', 'false')
+          if (annotate !== null) annotate.classList.remove('dsh-ann-ghost-dim')
+        }
+        trackBarWidth()
+      }
+
+      /** 把整条工具条钳回视口内（展开标签/页面缩放后调用）。 */
+      function clampBarToViewport(bar) {
+        var left = Math.max(8, Math.min(ui.pos.left, window.innerWidth - bar.offsetWidth - 8))
+        if (left !== ui.pos.left) {
+          ui.pos.left = left
+          bar.style.left = left + 'px'
+        }
+      }
+
+      /** 标签持久化数据变化时只重填面板内容，不重建工具条。 */
+      function refreshTagPanel() {
+        var bar = ui.el
+        if (bar === null || bar === undefined) return
+        var old = bar.querySelector('.dsh-ann-tags')
+        if (old === null || old.parentNode === null) return
+        old.parentNode.replaceChild(tagPanel(), old)
+      }
+
+      /** 工具条内向右展开的标签面板：浮岛按钮 + 末尾「+」新增。 */
+      function tagPanel() {
+        var panel = document.createElement('div')
+        panel.className = 'dsh-ann-tags'
+        panel.__annClosing = false
+        panel.__annTimer = null
+        for (var i = 0; i < annotationTags.length; i++) panel.appendChild(tagPill(annotationTags[i]))
+        var add = document.createElement('button')
+        add.type = 'button'
+        add.className = 'dsh-ann-tag-add'
+        add.textContent = '+'
+        add.title = t('tags.add')
+        // 指针点击在输入框失焦前处理，避免空输入框先被 blur 移除、click 又重开。
+        var handledByPointer = false
+        function runAddAction() {
+          var input = panel.querySelector('.dsh-ann-tag-input')
+          if (input === null) {
+            showTagInput(panel, add)
+            return
+          }
+          // 输入框已打开时再点「+」：空内容取消；有内容按 Enter 提交。
+          if ((input.value || '').trim() === '') {
+            input.dataset.done = '1'
+            input.remove()
+            return
+          }
+          commitTag(input)
+        }
+        add.addEventListener('pointerdown', function (ev) {
+          ev.preventDefault()
+          handledByPointer = true
+          runAddAction()
+        })
+        add.addEventListener('click', function () {
+          if (handledByPointer) {
+            handledByPointer = false
+            return
+          }
+          runAddAction()
+        })
+        panel.appendChild(add)
+        return panel
+      }
+
+      function tagPill(tag) {
+        var pill = document.createElement('button')
+        pill.type = 'button'
+        pill.className = 'dsh-ann-tag'
+        pill.title = tag
+        var label = document.createElement('span')
+        label.className = 'dsh-ann-tag-label'
+        label.textContent = tag
+        pill.appendChild(label)
+        var del = document.createElement('span')
+        del.className = 'dsh-ann-tag-del'
+        del.textContent = '×'
+        del.title = t('tags.del')
+        del.addEventListener('click', function (ev) {
+          ev.stopPropagation()
+          ev.preventDefault()
+          mutateTags('remove', tag)
+        })
+        pill.appendChild(del)
+        pill.addEventListener('click', function () {
+          ignoreUntil = Date.now() + 80
+          chooseTag(tag)
+        })
+        return pill
+      }
+
+      /** 点「+」后在本地面板内展开输入框：Enter 保存、Esc 取消、失焦保存。 */
+      function showTagInput(panel, add) {
+        if (panel.querySelector('.dsh-ann-tag-input') !== null) return
+        var input = document.createElement('input')
+        input.type = 'text'
+        input.className = 'dsh-ann-tag-input'
+        input.maxLength = 24
+        input.placeholder = t('tags.placeholder')
+        input.addEventListener('keydown', function (ev) {
+          ev.stopPropagation()
+          if (ev.key === 'Enter') { ev.preventDefault(); commitTag(input) }
+          else if (ev.key === 'Escape') { ev.preventDefault(); input.remove(); add.focus() }
+        })
+        input.addEventListener('blur', function () { commitTag(input) })
+        panel.appendChild(input)
+        input.focus()
+      }
+
+      function commitTag(input) {
+        if (input.dataset.done === '1') return
+        input.dataset.done = '1'
+        var value = (input.value || '').trim().slice(0, 24)
+        if (value === '' || annotationTags.indexOf(value) !== -1) {
+          input.remove()
+          return
+        }
+        mutateTags('add', value)
+      }
+
+      /** 选标签 = 直接给当前选区建批注（note=标签）；同一原文已有批注则替换标签。 */
+      function chooseTag(tag) {
+        if (ui.mode !== 'actions' || ui.quote === '') return
+        var text = ui.quote
+        var anchor = captureAnchor(text, ui.selectionRange)
+        var sourceUrl = anchor.sourceUrl || ''
+        var existing = null
+        for (var i = 0; i < ui.quotes.length; i++) {
+          if (ui.quotes[i].text === text && (ui.quotes[i].sourceUrl || '') === sourceUrl) {
+            existing = ui.quotes[i]
+            break
+          }
+        }
+        if (existing !== null) {
+          existing.note = tag
+        } else {
+          ui.quotes.push({
+            id: 'q-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6),
+            text: text,
+            note: tag,
+            range: anchor.range,
+            ...(anchor.sourceUrl ? { sourceUrl: anchor.sourceUrl, sourcePath: anchor.sourcePath } : {}),
+            seqKey: anchor.seqKey,
+            rowHead: anchor.rowHead,
+            textOffset: anchor.textOffset,
+            ctxBefore: anchor.ctxBefore,
+            ctxAfter: anchor.ctxAfter,
+          })
+        }
+        writeCurrentPendingQuotes()
+        tagPanelOpen = false
+        closeToolbar()
+        updateChip()
+        renderMarkers()
+        focusComposer()
       }
 
       function positionEditor(card, left, top) {
@@ -1562,6 +2295,7 @@ window.__ModuleLoader__.load({
         }
         card.style.left = ui.pos.left + 'px'
         card.style.top = ui.pos.top + 'px'
+        updateJumpButton()
       }
 
       function makeEditorDraggable(head, card) {
@@ -1582,22 +2316,11 @@ window.__ModuleLoader__.load({
 
       // ---------- 批注标记 ----------
       var markersSig = null
+      /** 遮挡区（输入框 + 会话头部）签名：只有它变化时才需要重写 clipPath。
+       *  每帧无条件写 clipPath 会让整个 fixed 标记层重新裁剪/重绘；而高亮与
+       *  编号的位置变化已经由元素池增量更新，不再需要靠签名触发全量重建。 */
       function markersSignature(blockers) {
         var parts = []
-        for (var i = 0; i < ui.quotes.length; i++) {
-          var q = ui.quotes[i]
-          var range = locateQuote(q.text, q)
-          if (range === null) { parts.push(q.id + ':gone'); continue }
-          var rects = quoteRects(range, q)
-          for (var c = 0; c < rects.length; c++) {
-            var r = rects[c]
-            if (r.width === 0 || r.height === 0) continue
-            parts.push(q.id + ':' + Math.round(r.left) + ',' + Math.round(r.top) + ',' + Math.round(r.width) + ',' + Math.round(r.height))
-          }
-          if (rects.length > 0) parts.push(q.id + ':chip')
-        }
-        // 遮挡区（输入框 + 会话头部）也进签名：它们改变时编号必须重走
-        // 让位/隐藏，否则旧位置会被裁剪成半截残影。
         for (var b = 0; b < blockers.length; b++) {
           var br = blockers[b]
           parts.push('b:' + Math.round(br.left) + ',' + Math.round(br.top) + ',' + Math.round(br.width) + ',' + Math.round(br.height))
@@ -1607,15 +2330,42 @@ window.__ModuleLoader__.load({
 
       /** 按 CSS Modules local 名取宿主元素的可见矩形：类名形如 `wSkVaW_header`
        *  （哈希前缀随版本变），故认「以 _<local> 收尾的 class token」，
-       *  headerActions / composerSeatInner 这类同前缀兄弟名不会被误认。 */
-      function hostLocalRects(local) {
-        var out = []
+       *  headerActions / composerSeatInner 这类同前缀兄弟名不会被误认。
+       *
+       *  性能：querySelectorAll + 逐元素正则只在缓存失效时执行一次，滚动与
+       *  尺寸变化只重读 getBoundingClientRect（廉价）。滚动路径每帧都要问
+       *  宿主几何（header / composerSeat / scrollBody），一次全文档查询 × 4
+       *  个 local 就会把每帧预算吃光——这正是批注一多就卡顿的来源之一。
+       *  缓存挂在函数自身的静态属性上，保持函数自包含（测试可单独求值）。 */
+      function hostLocalEls(local) {
+        var cache = hostLocalEls.cache || (hostLocalEls.cache = Object.create(null))
+        var els = cache[local]
+        if (els !== undefined) return els
         var found = document.querySelectorAll('[class*="_' + local + '"]')
         var re = new RegExp('(^|\\s)[^\\s]*_' + local + '(\\s|$)')
+        els = []
         for (var i = 0; i < found.length; i++) {
           var cls = found[i].getAttribute('class') || ''
           if (!re.test(cls)) continue
-          var r = found[i].getBoundingClientRect()
+          els.push(found[i])
+        }
+        cache[local] = els
+        return els
+      }
+
+      /** DOM 结构变化（消息行增删、视图重建）后清空宿主几何缓存。 */
+      function invalidateHostLocalRects() {
+        hostLocalEls.cache = null
+        conversationViewEl.cache = undefined
+        composerCardEl.cache = undefined
+        composerSeatOf.cache = undefined
+      }
+
+      function hostLocalRects(local) {
+        var els = hostLocalEls(local)
+        var out = []
+        for (var i = 0; i < els.length; i++) {
+          var r = els[i].getBoundingClientRect()
           if (r.width <= 0 || r.height <= 0) continue
           if (r.bottom <= 0 || r.top >= window.innerHeight) continue
           out.push(r)
@@ -1623,12 +2373,36 @@ window.__ModuleLoader__.load({
         return out
       }
 
+      /** 宿主「回到底部」按钮（会话滚动区右下方的 34px 圆形按钮，CSS Modules
+       *  local 名 `toBottom`，只在正文滚离底部时渲染）的可见矩形。待发送胶囊
+       *  就贴在同一水平带（输入卡片上方右侧），不避让会和它叠在一起。
+       *  宿主可能在按钮的显隐切换里复用元素（只改样式），故这里按「当前可见
+       *  矩形」判断，而不是缓存元素是否存在。 */
+      function toBottomRects() {
+        return hostLocalRects('toBottom')
+      }
+
+      /** 会话滚动容器（data 属性跨版本稳定）与输入卡片的元素引用缓存。 */
+      function conversationViewEl() {
+        if (conversationViewEl.cache === undefined) {
+          try { conversationViewEl.cache = document.querySelector('[data-conversation-scroll]') } catch (_) { conversationViewEl.cache = null }
+        }
+        return conversationViewEl.cache
+      }
+
+      function composerCardEl() {
+        if (composerCardEl.cache === undefined) {
+          composerCardEl.cache = document.querySelector('[data-composer-card]')
+        }
+        return composerCardEl.cache
+      }
+
       /** 会话列的可视范围（x 轴 + 上沿）：优先 `data-conversation-scroll`（#63，
        *  data 属性跨版本稳定，已核实 0.2.0-rc.2 仍在 ui-chat/ChatView.tsx），
        *  找不到时退回 scrollBody 类名启发式取并集。侧边栏文件预览的批注与
        *  顶栏横带在 x 轴上重叠（#57），顶栏挖洞必须限制在会话列内。 */
       function conversationColumnRange() {
-        var view = document.querySelector('[data-conversation-scroll]')
+        var view = conversationViewEl()
         var r = view !== null && typeof view.getBoundingClientRect === 'function'
           ? view.getBoundingClientRect() : null
         if (r === null || r.width <= 0) {
@@ -1652,14 +2426,23 @@ window.__ModuleLoader__.load({
        *  一样被头部遮住。
        *  #63：只取会话列以内的部分。顶栏横带在侧边栏上方同样延伸，若整幅
        *  裁掉会把侧边栏文件批注一并裁掉；且类名启发式（_<header>）也会误中
-       *  侧边栏自己的头——故逐个矩形与会话列求交，完全在列外的直接丢弃。 */
+       *  侧边栏自己的头——故逐个矩形与会话列求交，完全在列外的直接丢弃。
+       *  只认「正文滚动容器之外」的宿主头部：消息内容里的代码块工具栏同样叫
+       *  `*_header`，却随正文滚动移动——把它当遮挡区会让裁剪路径每帧变化
+       *  （高亮滚动到边界时闪一下再消失），还会误裁正文里的标记。 */
       function hostHeaderRects() {
         var col = conversationColumnRange()
-        var rects = hostLocalRects('header')
         if (col === null) return []
+        var scrollBody = conversationViewEl()
+        var els = hostLocalEls('header')
         var out = []
-        for (var i = 0; i < rects.length; i++) {
-          var r = rects[i]
+        for (var i = 0; i < els.length; i++) {
+          var el = els[i]
+          if (scrollBody !== null && typeof scrollBody.contains === 'function'
+            && scrollBody.contains(el)) continue
+          var r = el.getBoundingClientRect()
+          if (r.width <= 0 || r.height <= 0) continue
+          if (r.bottom <= 0 || r.top >= window.innerHeight) continue
           var left = Math.max(r.left, col.left)
           var right = Math.min(r.right, col.right)
           if (right - left <= 0) continue
@@ -1671,66 +2454,94 @@ window.__ModuleLoader__.load({
         return out
       }
 
-/** 输入区（整块 composer 容器，含输入卡片与下方统计行）——不是单个
-       *  `[data-composer-card]`：卡片下方那段同样被容器盖住，编号落在那里
-       *  会像「显示在对话区下面」。找不到容器时退回输入卡片。 */
+/** 输入区（整块 composer 容器）——优先 `composerStack`：它无缝覆盖
+       *  输入卡片与下方统计行；`composerSeat` 次之；`*_card` 与周围元素之间
+       *  有缝，只在都找不到时兜底。 */
       function hostComposerRects() {
-        var rects = hostLocalRects('composerSeat')
+        var rects = hostLocalRects('composerStack')
         if (rects.length > 0) return rects
-        var card = document.querySelector('[data-composer-card]')
+        rects = hostLocalRects('composerSeat')
+        if (rects.length > 0) return rects
+        var card = composerCardEl()
         if (card === null) return []
         var r = card.getBoundingClientRect()
         return r.width > 0 && r.height > 0 ? [r] : []
       }
 
-      /** 外框保留、逐个矩形挖空（evenodd）：标记层的裁剪路径。 */
+      /** 外框保留、逐个矩形挖空（evenodd）：标记层的裁剪路径。
+       *
+       *  每个洞都必须从视口上沿「桥接」下来、绕洞一周后再沿原路返回：
+       *  `polygon()` 只有一个轮廓，多个洞直接首尾相接时，洞与洞之间的连接线
+       *  （常常是斜线/竖线，位置随滚动与代码块 header 移动）会额外贡献射线
+       *  交点，使 evenodd 环绕数在洞外区域变成偶数——表现为「原文还在视口里，
+       *  但编号/高亮有时被整块裁掉」。去程与回程两条重合的桥线在 evenodd 下
+       *  相互抵消，只留下洞本身的一次环绕，判定就稳定了。 */
       function clipWithHoles(rects) {
         var d = 'polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0'
         for (var i = 0; i < rects.length; i++) {
           var r = rects[i]
-          d += ', ' + r.left + 'px ' + r.top + 'px, ' + r.right + 'px ' + r.top + 'px, '
-            + r.right + 'px ' + r.bottom + 'px, ' + r.left + 'px ' + r.bottom + 'px, '
-            + r.left + 'px ' + r.top + 'px'
+          var top = Math.max(0, r.top)
+          d += ', ' + r.left + 'px 0px, ' + r.left + 'px ' + top + 'px'
+            + ', ' + r.right + 'px ' + top + 'px, ' + r.right + 'px ' + r.bottom + 'px'
+            + ', ' + r.left + 'px ' + r.bottom + 'px, ' + r.left + 'px ' + top + 'px'
+            + ', ' + r.left + 'px 0px'
         }
         return d + ')'
       }
 
       function renderMarkers() {
         // 对整个标记层挖去输入区与会话头部区域；滚动、尺寸变化时即使原文没动也要刷新。
+        // 遮挡区签名不变时不重写 clipPath——每帧重写会让整个 fixed 层重新裁剪/重绘。
         var holes = hostComposerRects().concat(hostHeaderRects())
-        overlay.style.clipPath = holes.length > 0 ? clipWithHoles(holes) : 'none'
-        // 编号层用同一条裁剪路径兜底：编号只允许出现在会话内容可视区里，
-        // 绝不压在输入框或会话头部之上（定位逻辑已先让位/隐藏，这里是保险）。
-        numLayer.style.clipPath = overlay.style.clipPath
         var sig = markersSignature(holes)
-
         if (sig !== markersSig) {
           markersSig = sig
-          overlay.textContent = ''
-          numLayer.textContent = ''
-          buildMarkers()
+          overlay.style.clipPath = holes.length > 0 ? clipWithHoles(holes) : 'none'
+          // 编号层用同一条裁剪路径兜底：编号只允许出现在会话内容可视区里，
+          // 绝不压在输入框或会话头部之上（定位逻辑已先让位/隐藏，这里是保险）。
+          numLayer.style.clipPath = overlay.style.clipPath
         }
+        markerHoles = holes
+        buildMarkers()
       }
 
       function buildMarkers() {
-        if (ui.quotes.length === 0) return
+        // 新增批注的预览高亮不属于已保存批注：quotes 为空（第一条批注还没保存）
+        // 时也要绘制，所以先于下面的空集合早退处理。
+        paintPreviewHighlight()
+        // 标记元素按批注复用（元素池）：滚动时只更新 transform，不再每帧
+        // 清空两层、重建全部 DOM。批注集为空时把池元素全部撤下。
+        if (ui.quotes.length === 0) {
+          if (markerEntries.length > 0) clearMarkers()
+          return
+        }
+        for (var e = 0; e < markerEntries.length; e++) markerEntries[e].used = false
+        // 遮挡区与滚动容器每帧只问一次——旧实现在每条批注的循环里各问一次，
+        // N 条批注就是 3N 次全文档 querySelectorAll + getBoundingClientRect。
+        var blockers = markerHoles !== null
+          ? markerHoles
+          : hostHeaderRects().concat(hostComposerRects())
+        var viewers = hostLocalRects('scrollBody')
+        var col = conversationColumnRange()
         var placed = []
         for (var i = 0; i < ui.quotes.length; i++) {
           var q = ui.quotes[i]
-          var range = locateQuote(q.text, q)
-          if (range === null) continue
-          var rects = quoteRects(range, q)
+          var entry = markerEntryFor(q)
+          entry.used = true
+          var range = locateQuoteCached(q)
+          var rects = range !== null ? quoteRects(range, q) : []
+          // 高亮块：按可见 rect 序号复用池元素，跨行数变化时多出来的隐藏。
+          var shown = 0
           for (var c = 0; c < rects.length; c++) {
             var rect = rects[c]
             if (rect.width === 0 || rect.height === 0) continue
-            var hl = document.createElement('div')
-            hl.className = 'dsh-ann-hl'
-            hl.style.left = rect.left + 'px'
-            hl.style.top = rect.top + 'px'
-            hl.style.width = rect.width + 'px'
-            hl.style.height = rect.height + 'px'
-            overlay.appendChild(hl)
+            var hl = hlAt(entry, shown)
+            placeMarkerEl(hl, Math.round(rect.left), Math.round(rect.top),
+              Math.round(rect.width), Math.round(rect.height))
+            shown++
           }
+          for (var h = shown; h < entry.hls.length; h++) hideMarkerEl(entry.hls[h])
+          // 编号：位置规则与历史实现逐条一致（可见性判定 / 会话列下限 / 碰撞避让）。
           var anchor = null
           for (var k = 0; k < rects.length; k++) {
             var r = rects[k]
@@ -1738,85 +2549,425 @@ window.__ModuleLoader__.load({
             if (r.top > -8 && r.top < window.innerHeight) { anchor = r; break }
           }
           if (anchor === null && rects.length > 0 && rects[0].width > 0) anchor = rects[0]
-          if (anchor !== null) {
-            var chipTop = anchor.top - 20
-            if (chipTop < 4) chipTop = Math.min(anchor.top + 2, window.innerHeight - 22)
-            if (chipTop < 4) chipTop = 4
-            // #63：编号下限抬到会话列可视区上沿 + 4px——原文起于其下时，把落在
-            // 顶栏横带里的编号压回正文区（而不是被裁成半截或整条跳过）；原文
-            // 顶部已滚入顶栏之下时不钳制，仍走下方「与遮挡区相交即跳过」的
-            // 逻辑（跟正文一样，滚出可视区即消失）。
-            var col = conversationColumnRange()
-            var chipFloor = col !== null ? col.top + 4 : 4
-            if (col !== null && anchor.top >= chipFloor && chipTop < chipFloor) chipTop = chipFloor
-            var chipLeft = Math.max(4, Math.min(anchor.left - 4, window.innerWidth - 24))
-            // 编号只允许出现在「会话正文实际看得见」的地方：跟正文一样，滚出
-            // 内容可视区就消失，绝不贴边钉住（钉住会浮在输入框上/下面的空处）。
-            // 两条判据：① 落在正文滚动容器里；② 不与宿主遮挡 UI（会话头部、
-            // 整块输入区）相交。任一不满足就整条不渲染——不渲染也就不会出现
-            // 被裁掉半截的"阴影残影"。
-            var skipChip = false
-            var views = hostLocalRects('scrollBody')
-            for (var vc = 0; vc < views.length; vc++) {
-              var vr = views[vc]
-              if (chipLeft + 26 <= vr.left || chipLeft >= vr.right) continue
-              if (chipTop < vr.top || chipTop + 18 > vr.bottom) skipChip = true
-              break
-            }
-            var blockers = hostHeaderRects().concat(hostComposerRects())
-            for (var bc = 0; bc < blockers.length && !skipChip; bc++) {
-              var bk = blockers[bc]
-              if (chipLeft + 26 <= bk.left || chipLeft >= bk.right) continue
-              if (chipTop + 18 > bk.top && chipTop < bk.bottom) skipChip = true
-            }
-            if (!skipChip) {
-              var chip = document.createElement('div')
-              chip.className = 'dsh-ann-num'
-              chip.textContent = String(i + 1)
-              var tries = 0
-              while (tries < 12) {
-                var clash = false
-                for (var p = 0; p < placed.length; p++) {
-                  var bp = placed[p]
-                  if (Math.abs(bp.left - chipLeft) < 18 && Math.abs(bp.top - chipTop) < 18) {
-                    clash = true
-                    break
-                  }
-                }
-                if (!clash) break
-                chipLeft += 18
-                if (chipLeft > window.innerWidth - 24) { chipLeft = 4; chipTop += 18 }
-                tries++
+          if (anchor === null) { hideMarkerEl(entry.chip); hideMarkerEl(entry.tagEl); continue }
+          var chipTop = anchor.top - 20
+          if (chipTop < 4) chipTop = Math.min(anchor.top + 2, window.innerHeight - 22)
+          if (chipTop < 4) chipTop = 4
+          // #63：编号下限抬到会话列可视区上沿 + 4px——原文起于其下时，把落在
+          // 顶栏横带里的编号压回正文区（而不是被裁成半截或整条跳过）；原文
+          // 顶部已滚入顶栏之下时不钳制，仍走下方「与遮挡区相交即跳过」的
+          // 逻辑（跟正文一样，滚出可视区即消失）。
+          var chipFloor = col !== null ? col.top + 4 : 4
+          if (col !== null && anchor.top >= chipFloor && chipTop < chipFloor) chipTop = chipFloor
+          var chipLeft = Math.max(4, Math.min(anchor.left - 4, window.innerWidth - 24))
+          // 编号只允许出现在「会话正文实际看得见」的地方：跟正文一样，滚出
+          // 内容可视区就消失，绝不贴边钉住（钉住会浮在输入框上/下面的空处）。
+          // 两条判据：① 落在正文滚动容器里；② 不与宿主遮挡 UI（会话头部、
+          // 整块输入区）相交。任一不满足就整条不渲染——不渲染也就不会出现
+          // 被裁掉半截的"阴影残影"。
+          var skipChip = false
+          for (var vc = 0; vc < viewers.length; vc++) {
+            var vr = viewers[vc]
+            if (chipLeft + 26 <= vr.left || chipLeft >= vr.right) continue
+            if (chipTop < vr.top || chipTop + 18 > vr.bottom) skipChip = true
+            break
+          }
+          for (var bc = 0; bc < blockers.length && !skipChip; bc++) {
+            var bk = blockers[bc]
+            if (chipLeft + 26 <= bk.left || chipLeft >= bk.right) continue
+            if (chipTop + 18 > bk.top && chipTop < bk.bottom) skipChip = true
+          }
+          if (skipChip) { hideMarkerEl(entry.chip); hideMarkerEl(entry.tagEl); continue }
+          var chip = chipAt(entry)
+          var label = String(i + 1)
+          if (chip.textContent !== label) {
+            chip.textContent = label
+            entry.chipWidth = 0
+          }
+          var tries = 0
+          while (tries < 12) {
+            var clash = false
+            for (var p = 0; p < placed.length; p++) {
+              var bp = placed[p]
+              if (Math.abs(bp.left - chipLeft) < 18 && Math.abs(bp.top - chipTop) < 18) {
+                clash = true
+                break
               }
-              placed.push({ left: chipLeft, top: chipTop })
-              chip.style.left = chipLeft + 'px'
-              chip.style.top = chipTop + 'px'
-              ;(function (q) {
-                chip.addEventListener('click', function (ev) {
-                  ev.stopPropagation()
-                  openEditorFor(q)
-                })
-              })(q)
-              numLayer.appendChild(chip)
+            }
+            if (!clash) break
+            chipLeft += 18
+            if (chipLeft > window.innerWidth - 24) { chipLeft = 4; chipTop += 18 }
+            tries++
+          }
+          placed.push({ left: chipLeft, top: chipTop })
+          placeMarkerEl(chip, Math.round(chipLeft), Math.round(chipTop), null, null)
+          // 编号 hover 提示：批注内容前 10 个字符；标签批注已有标签文字，不重复提示。
+          var tagText = tagOf(q)
+          var chipTitle = ''
+          if (tagText === '') {
+            var noteText = (q.note || '').trim()
+            if (noteText !== '') {
+              chipTitle = Array.from(noteText.replace(/\s+/g, ' ')).slice(0, 10).join('')
+            }
+          }
+          if (chip.title !== chipTitle) chip.title = chipTitle
+          // 标签：编号后跟随标签文字；note 已不是现存标签时只撤标签、保留编号。
+          if (tagText === '') {
+            hideMarkerEl(entry.tagEl)
+          } else {
+            var tagEl = tagAt(entry)
+            if (tagEl.textContent !== tagText) tagEl.textContent = tagText
+            if (entry.chipWidth === 0) entry.chipWidth = chip.offsetWidth || 16
+            var tagLeft = chipLeft + entry.chipWidth + 4
+            if (tagLeft + 80 <= window.innerWidth - 4) {
+              placeMarkerEl(tagEl, Math.round(tagLeft), Math.round(chipTop), null, null)
+            } else {
+              hideMarkerEl(tagEl)
             }
           }
         }
+        // 已经删除的批注：把它们的池元素撤下并释放（removeQuote 之后）。
+        for (var m = markerEntries.length - 1; m >= 0; m--) {
+          if (markerEntries[m].used) continue
+          clearMarkerEls(markerEntries[m])
+          markerEntries.splice(m, 1)
+        }
+      }
+
+      // ---------- 标记元素池 ----------
+      // 每条批注的标记元素在首次渲染时创建、之后长期复用：滚动时每帧只有
+      // transform 变化，不产生 DOM 增删。旧的「每帧清空重建」正是滚动卡顿与
+      // 标记滞后半拍的主因：fixed 标记层由主线程逐帧更新，而正文滚动在合成
+      // 线程，主线程每帧重建 N 条标记就必然落后于滚动。
+      var markerEntries = []
+      var markerEntryOf = typeof WeakMap === 'function' ? new WeakMap() : null
+      var locateCache = typeof WeakMap === 'function' ? new WeakMap() : null
+      var markerHoles = null
+
+      function markerEntryFor(q) {
+        var entry = markerEntryOf !== null ? markerEntryOf.get(q) : undefined
+        if (entry !== undefined) return entry
+        entry = { quote: q, hls: [], used: false, chip: null, tagEl: null, chipWidth: 0 }
+        if (markerEntryOf !== null) markerEntryOf.set(q, entry)
+        markerEntries.push(entry)
+        return entry
+      }
+
+      function hlAt(entry, index, className) {
+        var el = entry.hls[index]
+        if (el !== undefined) return el
+        el = document.createElement('div')
+        // 预览高亮用独立类名：正式标记选择器 `.dsh-ann-hl` 不会被隐藏的预览元素干扰。
+        el.className = className === 'preview' ? 'dsh-ann-hl-preview' : 'dsh-ann-hl'
+        el.style.display = 'none'
+        entry.hls[index] = el
+        overlay.appendChild(el)
+        return el
+      }
+
+      function chipAt(entry) {
+        if (entry.chip !== null) return entry.chip
+        var chip = document.createElement('div')
+        chip.className = 'dsh-ann-num'
+        chip.style.display = 'none'
+        ;(function (q) {
+          chip.addEventListener('click', function (ev) {
+            ev.stopPropagation()
+            openEditorFor(q)
+          })
+        })(entry.quote)
+        entry.chip = chip
+        numLayer.appendChild(chip)
+        return chip
+      }
+
+      /** 编号后跟随的标签文字（纯展示，与编号同层）。 */
+      function tagAt(entry) {
+        if (entry.tagEl !== null) return entry.tagEl
+        var el = document.createElement('div')
+        el.className = 'dsh-ann-num-tag'
+        el.style.display = 'none'
+        entry.tagEl = el
+        numLayer.appendChild(el)
+        return el
+      }
+
+      /** 该批注显示的标签：note 必须是当前持久化标签之一，否则视为失效。 */
+      function tagOf(q) {
+        var note = (q.note || '').trim()
+        if (note === '') return ''
+        return annotationTags.indexOf(note) !== -1 ? note : ''
+      }
+
+      /** 只在几何真正变化时写 style：fixed 层用 transform 定位（不触发布局），
+       *  尺寸只在换行/字号变化时写。w/h 传 null 表示由内容决定。 */
+      function placeMarkerEl(el, x, y, w, h) {
+        var g = el.__annGeom
+        if (g === undefined) g = el.__annGeom = { x: null, y: null, w: null, h: null, shown: false }
+        if (g.x !== x || g.y !== y) {
+          g.x = x
+          g.y = y
+          el.style.left = '0px'
+          el.style.top = '0px'
+          el.style.transform = 'translate(' + x + 'px,' + y + 'px)'
+        }
+        if (w !== null && g.w !== w) { g.w = w; el.style.width = w + 'px' }
+        if (h !== null && g.h !== h) { g.h = h; el.style.height = h + 'px' }
+        if (!g.shown) { g.shown = true; el.style.display = '' }
+      }
+
+      function hideMarkerEl(el) {
+        if (el === null || el === undefined) return
+        var g = el.__annGeom
+        if (g !== undefined) {
+          if (!g.shown) return
+          g.shown = false
+        }
+        el.style.display = 'none'
+      }
+
+      function clearMarkerEls(entry) {
+        for (var i = 0; i < entry.hls.length; i++) {
+          if (entry.hls[i].parentNode !== null) entry.hls[i].parentNode.removeChild(entry.hls[i])
+        }
+        entry.hls.length = 0
+        if (entry.chip !== null && entry.chip.parentNode !== null) entry.chip.parentNode.removeChild(entry.chip)
+        entry.chip = null
+        if (entry.tagEl !== null && entry.tagEl.parentNode !== null) entry.tagEl.parentNode.removeChild(entry.tagEl)
+        entry.tagEl = null
+      }
+
+      /** 标记层完全清空（批注集为空 / 插件卸载）。 */
+      function clearMarkers() {
+        for (var i = 0; i < markerEntries.length; i++) clearMarkerEls(markerEntries[i])
+        markerEntries.length = 0
+      }
+
+      // ---------- 新增批注的选区预览高亮 ----------
+      // 选中文字后工具条（「+ 批注」浮窗）一出现就画出选区预览高亮，点击「标签」
+      // 展开标签面板时同样保持；点「批注」进入编辑浮窗后继续显示，让用户在保存
+      // 前就能直观看到将要批注的原文。放弃（X / Esc / 点外部）或保存后由
+      // closeToolbar 撤销，正式标记随即接管。原文已经批注过（工具条显示
+      // 「已批注」）时不再叠加预览，避免与正式高亮重复。
+      var previewEntry = { hls: [] }
+
+      function previewActive() {
+        if (ui.selectionRange === null) return false
+        if (ui.mode === 'editing' && ui.editingId === null) return true
+        // 点过「标签」/「批注」按钮（previewArmed）才显示预览；工具条刚出现时不显示。
+        if (ui.mode !== 'actions' || !ui.previewArmed) return false
+        var url = (ui.source && ui.source.sourceUrl) || ''
+        return !ui.quotes.some(function (q) {
+          return q.text === ui.quote && (q.sourceUrl || '') === url
+        })
+      }
+
+      function paintPreviewHighlight() {
+        var active = previewActive()
+        // 平时（没有预览）快速返回：滚动路径每帧都会走到这里。
+        if (!active && previewEntry.hls.length === 0) return
+        var rects = []
+        if (active) {
+          try {
+            var range = ui.selectionRange
+            if (range.startContainer === null || !range.startContainer.isConnected) {
+              // 宿主重渲染让 Range 失效：撤下预览，保存仍走文本锚点兜底。
+              ui.selectionRange = null
+              active = false
+            } else {
+              rects = quoteRects(range, ui.source || {})
+            }
+          } catch (_) { active = false; rects = [] }
+        }
+        var shown = 0
+        if (active) {
+          for (var i = 0; i < rects.length; i++) {
+            var rect = rects[i]
+            if (rect.width === 0 || rect.height === 0) continue
+            placeMarkerEl(hlAt(previewEntry, shown, 'preview'), Math.round(rect.left), Math.round(rect.top),
+              Math.round(rect.width), Math.round(rect.height))
+            shown++
+          }
+        }
+        for (var j = shown; j < previewEntry.hls.length; j++) hideMarkerEl(previewEntry.hls[j])
+      }
+
+      /** 定位结果缓存：DOM 内容不变时滚动只重读 rect，不再重复跑文本扫描。
+       *  locateQuote 的慢路径是 O(会话文本长度) 的全量扫描，每帧每条批注一次
+       *  就足以把滚动帧预算吃满（尤其是刷新后恢复、没有 live Range 的批注）。
+       *  文件批注额外校验来源文件未变：宿主切文件时可能只改
+       *  `data-textpreview-url`（文本节点未重建），仅靠 isConnected + 文本匹配
+       *  会把 a.md 的标记继续画在 b.md 上。 */
+      function locateQuoteCached(q) {
+        var cached = locateCache !== null ? locateCache.get(q) : undefined
+        if (cached !== undefined) {
+          if (cached.range !== null && rangeAlive(cached.range, q.text) && sourceAlive(cached.range, q)) {
+            return cached.range
+          }
+          // 上一次重定位失败、且之后宿主 DOM 没有变化（滚动/快速滚动本身不改
+          // DOM）：直接沿用失败结果，别每帧重跑 locateQuote 的全量文本扫描——
+          // 长会话里每条批注一次 O(文本长度) 扫描，快速滚动会把主线程拖满，
+          // 标记跟不上滚动就会闪现。加载更早等 DOM 变化会递增 seq，自然重试。
+          if (cached.range === null && cached.domSeq === domMutationSeq) return null
+        }
+        var range = locateQuote(q.text, q)
+        if (locateCache !== null) {
+          if (range !== null) locateCache.set(q, { range: range })
+          else locateCache.set(q, { range: null, domSeq: domMutationSeq })
+        }
+        return range
+      }
+
+      /** 批注的 Range 是否仍落在原文所属的文件预览里（普通正文批注恒真）。 */
+      function sourceAlive(range, q) {
+        if (!q.sourceUrl) return true
+        try {
+          var source = documentSourceOf(range.commonAncestorContainer)
+          if (source === null || source.sourceUrl !== q.sourceUrl) return false
+          return source.root.getClientRects().length > 0
+        } catch (_) { return false }
+      }
+
+      /** 缓存 Range 是否仍是原文的有效定位：节点还在文档里且文本未变。
+       *  React 重渲染会替换文本节点（isConnected=false）或改写文本，这两种
+       *  情况都必须重新定位。 */
+      function rangeAlive(range, text) {
+        try {
+          if (range === null || range.startContainer === null
+            || !range.startContainer.isConnected) return false
+          var live = range.toString()
+          if (live === text) return true
+          return live.replace(/\s+/g, ' ').trim() === text.replace(/\s+/g, ' ').trim()
+        } catch (_) { return false }
       }
 
       // ---------- 动作 ----------
-      function captureAnchor(text) {
+      /** 从节点向上收集所有「纵向可滚动」的祖先（不含 body / documentElement）。 */
+      function scrollableAncestors(el) {
+        var out = []
+        for (var p = el; p !== null && p !== document.body && p !== document.documentElement; p = p.parentElement) {
+          var oy = getComputedStyle(p).overflowY
+          if (oy !== 'auto' && oy !== 'scroll' && oy !== 'overlay') continue
+          if (p.scrollHeight <= p.clientHeight + 1) continue
+          out.push(p)
+        }
+        return out
+      }
+
+      /** 把 rect 在单个滚动容器里垂直居中（带边界钳制），返回实际写入的滚动位移。 */
+      function centerRectInScroller(scroller, rect, shift, behavior) {
+        var box = scroller.getBoundingClientRect()
+        var target = scroller.scrollTop + rect.top - shift - box.top
+          - Math.max(0, (scroller.clientHeight - rect.height) / 2)
+        target = Math.max(0, Math.min(target, scroller.scrollHeight - scroller.clientHeight))
+        var delta = target - scroller.scrollTop
+        try { scroller.scrollTo({ top: target, behavior: behavior }) } catch (_) { scroller.scrollTop = target }
+        return delta
+      }
+
+      /** 把 Range 滚到视口中央（默认平滑；用户开启「减少动态效果」时瞬时）。
+       *  DSH 正文滚动体是 [data-conversation-scroll]，步骤过程体是
+       *  [data-step-process-body]，侧边栏文件预览另有自己的滚动容器；且这些
+       *  容器内部还可能嵌套滚动容器（长代码块、长表格的 overflow:auto）。
+       *  因此从 range 向上收集**每一层**纵向可滚动祖先，由内到外逐个居中：
+       *  只滚最内层的局部容器会让正文看起来「没动」（批注文字在代码块自己
+       *  的滚动区里），只滚最外层则看不到嵌在长代码块深处的原文。没有局部
+       *  滚动容器时才退回窗口滚动。range 由调用方定位，找不到也返回 false。 */
+      function scrollRangeIntoView(range) {
+        try {
+          var node = range.startContainer
+          var el = node instanceof Element ? node : (node !== null ? node.parentElement : null)
+          if (el === null) return false
+          var rect = range.getBoundingClientRect()
+          var behavior = 'smooth'
+          try {
+            if (typeof window.matchMedia === 'function'
+              && window.matchMedia('(prefers-reduced-motion: reduce)').matches) behavior = 'auto'
+          } catch (_) { /* 保持平滑 */ }
+          var scrollers = scrollableAncestors(el)
+          if (scrollers.length === 0) {
+            var winTop = (window.scrollY || 0) + rect.top
+              - Math.max(0, (window.innerHeight - rect.height) / 2)
+            try { window.scrollTo({ top: winTop, behavior: behavior }) } catch (_) { window.scrollTo(0, winTop) }
+            return true
+          }
+          // 由内到外逐层居中，但 rect 只在循环外读一次：内层容器滚动后，range
+          // 在视口中的位置会同步上移（smooth 动画期间重读也读不到最终位置），
+          // 后续外层必须用「原始 rect - 已滚量之和」计算，否则外层会把滚动前的
+          // 旧位置居中，偏差等于内滚总量（长代码块里可能把目标送出视口）。
+          // 已滚量用实际写入量累计（clamp 后的值），被内容边界截断时同样成立。
+          var shift = 0
+          for (var i = 0; i < scrollers.length; i++) {
+            shift += centerRectInScroller(scrollers[i], rect, shift, behavior)
+          }
+          return true
+        } catch (_) { return false }
+      }
+
+      var flashTimer = null
+      /** 跳转后把目标文本高亮 2 秒，给用户视线一个落点。 */
+      function flashRange(range) {
+        if (typeof CSS === 'undefined' || CSS.highlights === undefined
+          || typeof Highlight !== 'function') return
+        try {
+          CSS.highlights.set('dsh-ann-jump-flash', new Highlight(range))
+          if (flashTimer !== null) clearTimeout(flashTimer)
+          flashTimer = setTimeout(function () {
+            flashTimer = null
+            CSS.highlights.delete('dsh-ann-jump-flash')
+          }, 2000)
+        } catch (_) { /* 高亮失败不影响跳转 */ }
+      }
+
+      /** 点击浮窗条目：把正文滚到该批注的原文处；原文已不可定位（或所在
+       *  容器无法滚动）时提示并保持面板。 */
+      function scrollToQuote(q, flash) {
+        var range = locateQuoteCached(q)
+        if (range === null || !scrollRangeIntoView(range)) {
+          showToast(t('toast.jumpLost'))
+          return false
+        }
+        if (flash) flashRange(range)
+        return true
+      }
+
+      /** 给浮窗里的批注原文（label tertiary）挂「跳转到目标内容」交互。
+       *  hover 下划线由 `.dsh-ann-tip-jump` 的 CSS 负责，title 是原生悬停提示
+       *  （与胶囊/角标的 title 约定一致，不额外占用共享 tipLayer）。 */
+      function enableQuoteJump(el, q, flash) {
+        el.classList.add('dsh-ann-tip-jump')
+        el.title = t('tip.jump')
+        el.addEventListener('click', function (ev) {
+          ev.stopPropagation()
+          scrollToQuote(q, flash)
+        })
+      }
+
+      /** 当前浏览器选区 Range；没有选区/已折叠时返回 null。
+       *  点击工具条按钮的瞬间 Chromium 会清掉页面选区，所以进入编辑浮窗后
+       *  不能只依赖实时选区——必须接受 settle 时缓存的 `ui.selectionRange`。 */
+      function currentSelectionRange() {
+        try {
+          var sel = window.getSelection()
+          if (sel === null || sel.isCollapsed || sel.rangeCount === 0) return null
+          return sel.getRangeAt(0)
+        } catch (_) { return null }
+      }
+
+      function captureAnchor(text, selectedRange) {
         var anchor = {
           range: null, seqKey: '', rowHead: '', textOffset: -1,
           ctxBefore: '', ctxAfter: '',
         }
         try {
-          var sel = window.getSelection()
-          if (sel === null || sel.isCollapsed || sel.rangeCount === 0) return anchor
-          var live = sel.getRangeAt(0)
+          var live = selectedRange !== undefined && selectedRange !== null
+            ? selectedRange
+            : currentSelectionRange()
+          if (live === null) return anchor
           var liveText = live.toString()
           // 选区文本与 settle 快照一致才持有 live range；不一致（选区微变、DOM
           // 被批注芯片等装饰改写）时也绝不返回全空锚——尽力抓行级锚点
-          // （seqKey/rowHead），让 locateQuote 在锚点消息内宽松重定位。
+          // （seqKey/rowHead），让  在锚点消息内宽松重定位。
           var textMatch = liveText.trim() === text
             || liveText.trim().replace(/\s+/g, ' ') === text.replace(/\s+/g, ' ')
           if (textMatch) {
@@ -1865,8 +3016,17 @@ window.__ModuleLoader__.load({
         ui.noteDraft = ''
         ui.error = null
         ui.editingId = null
-        ui.pendingAnchor = captureAnchor(ui.quote)
+        ui.previewArmed = true
+        // 点击工具条那一刻浏览器选区通常已被清掉：优先用实时选区，
+        // 回退到 settle 时缓存的选区（键盘触发等场景实时选区仍在）。
+        var range = currentSelectionRange() || ui.selectionRange
+        // 这个 Range 同时用于预览高亮与保存锚点，保存后的正式标记位置才和
+        // 预览完全一致。
+        ui.selectionRange = range
+        ui.pendingAnchor = captureAnchor(ui.quote, range)
         render()
+        // 选区立即变为高亮，用户保存前就能直观看到将要批注的内容。
+        paintPreviewHighlight()
       }
 
       /** 点击角标数字 → 重新打开该批注的编辑面板（预填批注内容，可修改后保存）。 */
@@ -1878,6 +3038,8 @@ window.__ModuleLoader__.load({
         ui.error = null
         ui.editingId = q.id
         ui.pendingAnchor = null
+        // 编辑已有批注：这条原文本来就有正式高亮，不需要「待批注」预览。
+        ui.selectionRange = null
         var range = locateQuote(q.text, q)
         var rect = range !== null ? range.getBoundingClientRect() : null
         ui.pos = rect !== null && rect.width > 0
@@ -2049,6 +3211,7 @@ window.__ModuleLoader__.load({
       }
 
       function closeToolbar() {
+        tagPanelOpen = false
         if (ui.mode === 'closed') return
         clearSettle()
         ui.mode = 'closed'
@@ -2056,6 +3219,12 @@ window.__ModuleLoader__.load({
         ui.busy = false
         ui.lastKey = ''
         ui.editingId = null
+        ui.selectionRange = null
+        ui.previewArmed = false
+        // 放弃本次批注：撤销「待批注」预览高亮（保存路径同样经过这里，
+        // 随后 renderMarkers 由正式标记接管）。
+        paintPreviewHighlight()
+        hideJumpButton()
         render()
       }
 
@@ -2105,29 +3274,58 @@ window.__ModuleLoader__.load({
 
       /** 待发送胶囊必须让开整个输入区：队列的「立即发送」按钮在卡片上方
        *  的 dock 内（#60）。优先稳定的 data hook，旧宿主认完整 CSS local，
-       *  不能误中 composerSeatInner；没有 seat 的宿主仍以输入卡片为锚。 */
+       *  不能误中 composerSeatInner；没有 seat 的宿主仍以输入卡片为锚。
+       *  结果按输入卡片引用缓存：滚动路径每帧都会问一次，父链遍历不该重做。 */
       function composerSeatOf(card) {
+        var cached = composerSeatOf.cache
+        if (cached !== undefined && cached.card === card) return cached.seat
         var seat = card.closest('[data-composer-seat]')
-        if (seat !== null) return seat
-        for (var el = card.parentElement; el !== null; el = el.parentElement) {
-          if (/(^|\s)\S*_composerSeat(\s|$)/.test(el.getAttribute('class') || '')) return el
+        if (seat !== null) {
+          composerSeatOf.cache = { card: card, seat: seat }
+          return seat
         }
+        for (var el = card.parentElement; el !== null; el = el.parentElement) {
+          if (/(^|\s)\S*_composerSeat(\s|$)/.test(el.getAttribute('class') || '')) {
+            composerSeatOf.cache = { card: card, seat: el }
+            return el
+          }
+        }
+        composerSeatOf.cache = { card: card, seat: card }
         return card
+      }
+
+      // 胶囊内容只在条数/文案变化时重建；滚动路径每帧只做 rect 比较后写位置。
+      // 旧实现每帧清空重放子节点并读 offsetWidth（强制同步布局），即使胶囊
+      // 位置没变也要付一次布局的代价——这是滚动卡顿的另一个固定成本。
+      var chipContentSig = null
+      var chipGeom = { left: null, top: null, w: 0, h: 0 }
+      function syncChipContent() {
+        var count = ui.quotes.length
+        var label = plural('chip.count', count)
+        var sig = count + '|' + label
+        if (sig === chipContentSig) return false
+        chipContentSig = sig
+        chipLayer.textContent = ''
+        var b = document.createElement('b')
+        b.style.cssText = 'color:var(--dsw-alias-text-accent,#4c9aff);font-weight:700;'
+        b.textContent = String(count)
+        chipLayer.appendChild(b)
+        chipLayer.appendChild(document.createTextNode(label))
+        chipGeom.w = 0
+        chipGeom.h = 0
+        return true
       }
 
       function updateChip() {
         if (ui.quotes.length === 0) {
-          chipLayer.style.display = 'none'
-          clearTip(chipLayer)
+          chipContentSig = null
+          chipGeom.left = null
+          chipGeom.top = null
+          hideChip()
           return
         }
-        chipLayer.textContent = ''
-        var b = document.createElement('b')
-        b.style.cssText = 'color:var(--dsw-alias-text-accent,#4c9aff);font-weight:700;'
-        b.textContent = String(ui.quotes.length)
-        chipLayer.appendChild(b)
-        chipLayer.appendChild(document.createTextNode(plural('chip.count', ui.quotes.length)))
-        var card = document.querySelector('[data-composer-card]')
+        syncChipContent()
+        var card = composerCardEl()
         var seat = card === null ? null : composerSeatOf(card)
         if (seat !== observedComposer) {
           if (composerObserver !== null) composerObserver.disconnect()
@@ -2135,31 +3333,53 @@ window.__ModuleLoader__.load({
           // 队列增加/展开时卡片尺寸可能完全不变，要观察包含 dock 的 seat。
           if (composerObserver !== null && seat !== null) composerObserver.observe(seat)
         }
-        if (card === null) {
-          chipLayer.style.display = 'none'
-          clearTip(chipLayer)
-          return
-        }
+        if (card === null) { hideChip(); return }
         var r = card.getBoundingClientRect()
         if (r.width === 0 || r.height === 0 || r.right <= 0 || r.bottom <= 0
           || r.left >= window.innerWidth || r.top >= window.innerHeight) {
-          chipLayer.style.display = 'none'
-          clearTip(chipLayer)
+          hideChip()
           return
         }
         // display:none 时 offsetWidth 为 0；先显示再量，首帧也能正确对齐长文案。
+        // 量过一次后缓存宽高：内容不变时滚动不再触发强制布局。
         chipLayer.style.display = 'flex'
-        var w = chipLayer.offsetWidth || 80
-        var h = chipLayer.offsetHeight || 24
+        if (chipGeom.w === 0) {
+          chipGeom.w = chipLayer.offsetWidth || 80
+          chipGeom.h = chipLayer.offsetHeight || 24
+        }
+        var w = chipGeom.w
+        var h = chipGeom.h
         var top = Math.min(r.top, seat.getBoundingClientRect().top) - h - 6
         // 不能把胶囊钳回 seat 内而遮住队列控件；空间恢复后下一次布局刷新会重显。
         if (top < 8) {
-          chipLayer.style.display = 'none'
-          clearTip(chipLayer)
+          hideChip()
           return
         }
-        chipLayer.style.left = Math.max(8, Math.min(r.right - w - 12, window.innerWidth - w - 8)) + 'px'
-        chipLayer.style.top = top + 'px'
+        var left = Math.max(8, Math.min(r.right - w - 12, window.innerWidth - w - 8))
+        // 宿主的「回到底部」按钮与胶囊同在输入卡片上方右侧。按钮存在时先按
+        // 可见矩形判断是否相交（水平、垂直各留一点呼吸余量），相交就把胶囊
+        // 整个让到按钮左侧——否则两枚控件叠在一起，胶囊的 hover / 点击都会
+        // 被按钮截走。左移后仍钳在视口内，空间实在不够时让位优先（不隐藏
+        // 胶囊：批注比按钮更重要）。
+        var avoid = toBottomRects()
+        for (var i = 0; i < avoid.length; i++) {
+          var a = avoid[i]
+          if (left + w + 6 <= a.left || left >= a.right + 6) continue
+          if (top + h + 4 <= a.top || top >= a.bottom + 4) continue
+          left = Math.max(8, a.left - w - 8)
+        }
+        if (chipGeom.left !== left || chipGeom.top !== top) {
+          chipGeom.left = left
+          chipGeom.top = top
+          chipLayer.style.left = left + 'px'
+          chipLayer.style.top = top + 'px'
+        }
+      }
+
+      /** 隐藏胶囊并只释放它自己的悬浮面板（归属清理，不误杀气泡/芯片面板）。 */
+      function hideChip() {
+        if (chipLayer.style.display !== 'none') chipLayer.style.display = 'none'
+        clearTip(chipLayer)
       }
 
       // 悬停宽限：标签与面板间有间隙，鼠标跨越间隙的瞬间不在任何元素上——
@@ -2483,6 +3703,7 @@ window.__ModuleLoader__.load({
               var body = document.createElement('span')
               body.style.cssText = 'font-size:11px;line-height:1.5;color:var(--dsw-alias-label-tertiary);'
               body.textContent = truncate(list[i].text, 50)
+              enableQuoteJump(body, list[i], true)
               item.appendChild(num)
               item.appendChild(body)
               if (list[i].note !== '') {
@@ -2667,6 +3888,7 @@ window.__ModuleLoader__.load({
           var quote = document.createElement('div')
           quote.style.cssText = 'font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary);word-break:break-word;padding:6px 8px;border-radius:8px;background:rgba(127,127,127,.12);'
           quote.textContent = truncate(item.text, 140)
+          enableQuoteJump(quote, item, true)
           el.appendChild(quote)
           if (typeof item.note === 'string' && item.note !== '') {
             var note = document.createElement('div')
@@ -2693,6 +3915,9 @@ window.__ModuleLoader__.load({
        *  不依赖发送事件链：异步渲染、刷新后的历史消息都能被覆盖。 */
       function decorateAll() {
         try {
+          // 1s 兜底：宿主可能只换 class 不增删节点（视图 tab 切换、composer 状态
+          // 变化），这类变化不会触发 childList 失效；每秒重查一次足够便宜。
+          invalidateHostLocalRects()
           var rows = allMessageRows()
           for (var i = rows.length - 1; i >= 0; i--) {
             var el = rows[i]
@@ -2792,6 +4017,7 @@ window.__ModuleLoader__.load({
         if (cur === lastSessionId) return
         writePendingQuotes(lastSessionId)
         lastSessionId = cur
+        invalidateHostLocalRects()
         if (ui.mode !== 'closed') closeToolbar()
         ui.quotes = readPendingQuotes(cur)
         annotationAttached = false
@@ -2853,11 +4079,13 @@ window.__ModuleLoader__.load({
         if (decoTimer !== null) { clearInterval(decoTimer); decoTimer = null }
         if (decorateAllPending !== null) { clearTimeout(decorateAllPending); decorateAllPending = null }
         if (composerObserver !== null) composerObserver.disconnect()
+        clearMarkers()
         chipLayer.remove()
         tipLayer.remove()
         host.remove()
         overlay.remove()
         numLayer.remove()
+        if (jumpBtn) { jumpBtn.remove(); jumpBtn = null }
       }
     }
 
