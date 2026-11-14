@@ -764,7 +764,47 @@ window.__ModuleLoader__.load({
       return null
     }
 
-    /** 定位批注的 Range：消息 seq 锚定优先，空白不敏感重搜兜底。 */
+    /** 在元素文本里找 quote 的最佳匹配：空白不敏感 + 上下文评分。
+     *  seqKey / rowHead / 全行扫描三条路径共用，避免各写一份扫描循环。 */
+    function matchIn(el, quote, ctx) {
+      var full = el.textContent || ''
+      var spans = allNormSpans(full, quote)
+      var best = null
+      var bestScore = -1
+      for (var i = 0; i < spans.length; i++) {
+        var range = rangeFromOffset(el, spans[i].start, spans[i].end - spans[i].start)
+        if (range === null) continue
+        var score = ctxScore(full, spans[i].start, spans[i].end - spans[i].start, ctx)
+        if (score > bestScore) { bestScore = score; best = range }
+      }
+      return best === null ? null : { range: best, score: bestScore }
+    }
+
+    /** 与保存时 textOffset 相差 ≤2 的匹配（容忍装饰文本造成的偏移漂移）。 */
+    function matchNearOffset(el, full, quote, offset) {
+      var span = findNormSpan(full, quote)
+      if (span === null || Math.abs(span.start - offset) > 2) return null
+      return rangeFromOffset(el, span.start, span.end - span.start)
+    }
+
+    /** 以保存的 ctxBefore 为锚，从它之后继续找 quote。 */
+    function matchAfterContext(el, full, quote, ctxBefore) {
+      var idx = full.indexOf(ctxBefore)
+      if (idx === -1) return null
+      var from = idx + ctxBefore.length
+      var span = findNormSpan(full.slice(from), quote)
+      if (span === null) return null
+      return rangeFromOffset(el, from + span.start, span.end - span.start)
+    }
+
+    /** 定位批注的 Range，按优先级逐级降落：
+     *  ① 文件预览（sourceUrl + 偏移 + 唯一匹配）
+     *  ② 仍存活的 live Range
+     *  ③ 消息 seq 锚点（textOffset → ctxBefore → 锚点内评分）
+     *  ④ 消息 rowHead 前缀匹配
+     *  ⑤ 全会话逐行扫描 + 上下文评分
+     *  ⑥ [data-chat-flow] 全文兜底
+     *  找到即返回；seqKey 分支内定位失败会终止（不跨消息模糊搜索，v1.3.6 纪律）。 */
     function locateQuote(quote, saved) {
       if (saved && saved.sourceUrl) {
         var bodies = document.querySelectorAll(DOCUMENT_TEXT)
@@ -805,35 +845,18 @@ window.__ModuleLoader__.load({
           if (item !== null) {
             var itText = item.textContent || ''
             if (saved.textOffset >= 0) {
-              var sp0 = findNormSpan(itText, quote)
-              if (sp0 !== null && Math.abs(sp0.start - saved.textOffset) <= 2) {
-                var itRange = rangeFromOffset(item, sp0.start, sp0.end - sp0.start)
-                if (itRange !== null) return itRange
-              }
+              var itRange = matchNearOffset(item, itText, quote, saved.textOffset)
+              if (itRange !== null) return itRange
             }
             if (saved.ctxBefore !== '') {
-              var itIdx = itText.indexOf(saved.ctxBefore)
-              if (itIdx !== -1) {
-                var itNear = itIdx + saved.ctxBefore.length
-                var sp1 = findNormSpan(itText.slice(itNear), quote)
-                if (sp1 !== null) {
-                  var itRange2 = rangeFromOffset(item, itNear + sp1.start, sp1.end - sp1.start)
-                  if (itRange2 !== null) return itRange2
-                }
-              }
+              var itRange2 = matchAfterContext(item, itText, quote, saved.ctxBefore)
+              if (itRange2 !== null) return itRange2
             }
             // 锚点消息内的全量扫描（空白不敏感 + 上下文评分）。
-            var spansIt = allNormSpans(itText, quote)
-            var bestIt = null
-            var bestItScore = -1
-            for (var pp2 = 0; pp2 < spansIt.length; pp2++) {
-              var rngIt = rangeFromOffset(item, spansIt[pp2].start, spansIt[pp2].end - spansIt[pp2].start)
-              if (rngIt === null) continue
-              var scIt = ctxScore(itText, spansIt[pp2].start, spansIt[pp2].end - spansIt[pp2].start,
-                { before: saved.ctxBefore || '', after: saved.ctxAfter || '' })
-              if (scIt > bestItScore) { bestItScore = scIt; bestIt = rngIt }
-            }
-            if (bestIt !== null && (saved.ctxBefore === '' || bestItScore > 0)) return bestIt
+            var bestIt = matchIn(item, quote, {
+              before: saved.ctxBefore || '', after: saved.ctxAfter || '',
+            })
+            if (bestIt !== null && (saved.ctxBefore === '' || bestIt.score > 0)) return bestIt.range
             // 锚点消息还在但原文匹配不上：先试批注芯片差异变体（「Annotation N」
             // vs「Annotation N：」）在**同一条消息内**宽松重定位——绝不跨消息
             // 模糊搜索（那是「跳到旧轮次」的根源，v1.3.6 纪律）。
@@ -857,36 +880,17 @@ window.__ModuleLoader__.load({
           var rowText = rows[r].textContent || ''
           if (rowText.slice(0, 24) !== saved.rowHead) continue
           if (saved.textOffset >= 0) {
-            var spR = findNormSpan(rowText, quote)
-            if (spR !== null && Math.abs(spR.start - saved.textOffset) <= 2) {
-              var range = rangeFromOffset(rows[r], spR.start, spR.end - spR.start)
-              if (range !== null) return range
-            }
+            var rowRange = matchNearOffset(rows[r], rowText, quote, saved.textOffset)
+            if (rowRange !== null) return rowRange
           }
           if (saved.ctxBefore !== '') {
-            var bIdx = rowText.indexOf(saved.ctxBefore)
-            if (bIdx !== -1) {
-              var near = bIdx + saved.ctxBefore.length
-              var spR2 = findNormSpan(rowText.slice(near), quote)
-              if (spR2 !== null) {
-                var range2 = rangeFromOffset(rows[r], near + spR2.start, spR2.end - spR2.start)
-                if (range2 !== null) return range2
-              }
-            }
+            var rowRange2 = matchAfterContext(rows[r], rowText, quote, saved.ctxBefore)
+            if (rowRange2 !== null) return rowRange2
           }
-          var spans = allNormSpans(rowText, quote)
-          var bestRow = null
-          var bestRowScore = -1
-          for (var pp = 0; pp < spans.length; pp++) {
-            var rng = rangeFromOffset(rows[r], spans[pp].start, spans[pp].end - spans[pp].start)
-            if (rng === null) continue
-            var sc = ctxScore(rowText, spans[pp].start, spans[pp].end - spans[pp].start,
-              saved !== undefined && saved !== null
-                ? { before: saved.ctxBefore || '', after: saved.ctxAfter || '' }
-                : null)
-            if (sc > bestRowScore) { bestRowScore = sc; bestRow = rng }
-          }
-          if (bestRow !== null) return bestRow
+          var bestRow = matchIn(rows[r], quote, {
+            before: saved.ctxBefore || '', after: saved.ctxAfter || '',
+          })
+          if (bestRow !== null) return bestRow.range
         }
       }
       var ctx = saved !== undefined && saved !== null
@@ -895,13 +899,10 @@ window.__ModuleLoader__.load({
       var best = null
       var bestScore = -1
       for (var i = 0; i < rows.length; i++) {
-        var full = rows[i].textContent || ''
-        var spans = allNormSpans(full, quote)
-        for (var p = 0; p < spans.length; p++) {
-          var range = rangeFromOffset(rows[i], spans[p].start, spans[p].end - spans[p].start)
-          if (range === null) continue
-          var score = ctxScore(full, spans[p].start, spans[p].end - spans[p].start, ctx)
-          if (score > bestScore) { bestScore = score; best = range }
+        var rowMatch = matchIn(rows[i], quote, ctx)
+        if (rowMatch !== null && rowMatch.score > bestScore) {
+          bestScore = rowMatch.score
+          best = rowMatch.range
         }
       }
       if (best !== null && (ctx === null || bestScore > 0)) return best
