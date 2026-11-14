@@ -211,6 +211,28 @@ window.__ModuleLoader__.load({
         'body:has([role="dialog"][aria-modal="true"]) [data-annotation-overlay],',
         'body:has([role="dialog"][aria-modal="true"]) [data-annotation-num-layer] { display: none; }',
         '.dsh-ann-tip { animation: dsh-ann-pop .12s var(--ds-ease-in-out, ease); }',
+        // 浮窗里的批注原文是「跳到正文该处」的入口：hover 加下划线（颜色沿用
+        // label-tertiary，不额外变色），光标提示可点击。
+        '.dsh-ann-tip-jump { cursor: pointer; }',
+        '.dsh-ann-tip-jump:hover { text-decoration: underline; text-underline-offset: 2px; }',
+        // 「回到批注内容」箭头：只保留双 V，不画按钮底板。
+        '.dsh-ann-jump { position: fixed; z-index: 1205; display: inline-flex; align-items: center;',
+        '  justify-content: center; width: 44px; height: 28px; padding: 0;',
+        '  border: 0; background: transparent;',
+        '  color: var(--dsw-alias-label-primary, #ededee);',
+        '  cursor: pointer; }',
+        '.dsh-ann-jump:hover { color: var(--dsw-alias-text-accent, #4c9aff); }',
+        '.dsh-ann-jump svg { width: 16px; height: 16px; overflow: visible; }',
+        '.dsh-ann-jump svg path { transform-box: fill-box; transform-origin: center; }',
+        '.dsh-ann-jump-down svg path { animation: dsh-ann-chev-down 1.1s ease-in-out infinite; }',
+        '.dsh-ann-jump-down svg path:nth-child(2) { animation-delay: .22s; }',
+        '.dsh-ann-jump-up svg path { animation: dsh-ann-chev-up 1.1s ease-in-out infinite; }',
+        '.dsh-ann-jump-up svg path:nth-child(2) { animation-delay: .22s; }',
+        '@keyframes dsh-ann-chev-down { 0%, 100% { opacity: .55; transform: translateY(-2px); }',
+        '  50% { opacity: 1; transform: translateY(2px); } }',
+        '@keyframes dsh-ann-chev-up { 0%, 100% { opacity: .55; transform: translateY(2px); }',
+        '  50% { opacity: 1; transform: translateY(-2px); } }',
+        '@media (prefers-reduced-motion: reduce) { .dsh-ann-jump svg path { animation: none; } }',
         // 可交互浮层始终使用不透明主题底色；菜单 token 在新版宿主可能带 alpha，
         // 默认状态、键盘聚焦和鼠标悬停都不能让正文穿透影响可读性。
         '@keyframes dsh-ann-fadein { from { opacity: 0; } to { opacity: 1; } }',
@@ -991,6 +1013,18 @@ window.__ModuleLoader__.load({
           'M14.4782 4.84067L14.2138 10.1152C14.1102 12.1872 14.067 13.0115 13.3866 13.9607C13.1044 14.3546 12.7498 14.6912 12.3424 14.9535C11.8239 15.2872 11.2415 15.4316 10.5585 15.4998C9.88727 15.5668 9.04946 15.5656 7.99998 15.5656C6.95051 15.5656 6.1127 15.5668 5.44142 15.4998C4.75851 15.4316 4.17602 15.2872 3.65753 14.9535C3.25012 14.6912 2.89559 14.3546 2.61332 13.9607C1.93296 13.0115 1.88979 12.1872 1.78619 10.1152L1.52179 4.84067L2.89006 4.77277L3.15343 10.0463C3.26221 12.2218 3.32452 12.6015 3.72646 13.1624C3.90825 13.4161 4.13686 13.6334 4.39927 13.8023C4.66204 13.9714 5.00263 14.0792 5.57825 14.1367C6.16562 14.1953 6.92298 14.1963 7.99998 14.1963C9.07699 14.1963 9.83434 14.1953 10.4217 14.1367C10.9973 14.0792 11.3379 13.9714 11.6007 13.8023C11.8631 13.6334 12.0917 13.4161 12.2735 13.1624C12.6755 12.6015 12.7378 12.2218 12.8465 10.0463L13.1099 4.77277L14.4782 4.84067ZM5.43011 6.22849H6.7994V11.3909H5.43011V6.22849ZM9.20056 6.22849H10.5699V11.3909H9.20056V6.22849ZM8.53597 0.434431C9.17976 0.434431 9.6522 0.426926 10.0966 0.571258C10.2357 0.616451 10.3717 0.672554 10.502 0.738948C10.9182 0.951107 11.2464 1.29099 11.7015 1.74612L12.4978 2.54136H15.3742V3.91169H0.625732V2.54136H3.50218L4.29845 1.74612C4.75358 1.29099 5.08174 0.951107 5.49801 0.738948C5.62831 0.672554 5.76425 0.616451 5.90334 0.571258C6.34776 0.426926 6.82021 0.434431 7.46399 0.434431H8.53597ZM7.46399 1.80476C6.73208 1.80476 6.51641 1.81187 6.32617 1.87369C6.25545 1.89667 6.18668 1.92533 6.12041 1.95907C5.96398 2.03878 5.82348 2.16253 5.44142 2.54136H10.5585C10.1765 2.16253 10.036 2.03878 9.87955 1.95907C9.81329 1.92533 9.74452 1.89667 9.6738 1.87369C9.48356 1.81187 9.26789 1.80476 8.53597 1.80476H7.46399Z',
         ], '0 0 16 16')
       },
+      arrowUp: function () {
+        return svg([
+          'M8 7.2L1.6 13.6L2.9 14.9L8 9.8L13.1 14.9L14.4 13.6L8 7.2Z',
+          'M8 1.4L1.6 7.8L2.9 9.1L8 4L13.1 9.1L14.4 7.8L8 1.4Z',
+        ], '0 0 16 16')
+      },
+      arrowDown: function () {
+        return svg([
+          'M8 8.8L1.6 2.4L2.9 1.1L8 6.2L13.1 1.1L14.4 2.4L8 8.8Z',
+          'M8 14.6L1.6 8.2L2.9 6.9L8 12L13.1 6.9L14.4 8.2L8 14.6Z',
+        ], '0 0 16 16')
+      },
     }
 
     var PENDING_STORAGE_PREFIX = 'dsh.annotation.pending.v1.'
@@ -1404,6 +1438,8 @@ window.__ModuleLoader__.load({
       host.addEventListener('pointerdown', onHostPointerDown)
 
       function onDocPointerDown(e) {
+        // 「回到批注内容」箭头在 host 之外，点击它不能把工具条关掉。
+        if (e.target instanceof Element && e.target.closest('[data-annotation-jump]')) return
         if (ui.mode === 'actions' && !host.contains(e.target) && !overlay.contains(e.target)) {
           closeToolbar()
         }
@@ -1455,6 +1491,10 @@ window.__ModuleLoader__.load({
               render()
             }
           }
+          if (ui.el !== null) {
+            applyBarClamp(ui.el)
+            updateJumpButton()
+          }
         })
       }
       window.addEventListener('scroll', onLayoutChange, true)
@@ -1468,6 +1508,7 @@ window.__ModuleLoader__.load({
           if (el.closest('[data-composer-card]') || el.closest('[data-input-scroll]')
             || el.closest('[data-annotation-for-dsh]') || el.closest('[data-annotation-overlay]')
             || el.closest('[data-annotation-num-layer]')
+            || el.closest('[data-annotation-jump]')
             || el.closest('[data-annotation-chip]') || el.closest('[data-annotation-tip-layer]')) {
             continue
           }
@@ -1763,6 +1804,229 @@ window.__ModuleLoader__.load({
             if (card.isConnected) positionEditor(card, ui.pos.left, ui.pos.top)
           })
         }
+        requestAnimationFrame(function () {
+          if (ui.mode === 'actions' && ui.el !== null) applyBarClamp(ui.el)
+          updateJumpButton()
+        })
+      }
+
+      // ---------- 「回到批注内容」箭头 ----------
+      // 工具条停靠上/下沿时，或编辑框里的原文被裁剪/滚出视口时出现；点击回跳。
+      var JUMP_GAP = 48
+      var jumpBtn = null
+      var jumpDir = ''
+
+      function ensureJumpButton() {
+        if (jumpBtn !== null) return jumpBtn
+        var btn = document.createElement('button')
+        btn.type = 'button'
+        btn.className = 'dsh-ann-jump'
+        btn.setAttribute('data-annotation-jump', '')
+        btn.style.display = 'none'
+        btn.addEventListener('click', jumpToTarget)
+        document.body.appendChild(btn)
+        jumpBtn = btn
+        return btn
+      }
+
+      function hideJumpButton() {
+        if (jumpBtn !== null) jumpBtn.style.display = 'none'
+        jumpDir = ''
+      }
+
+      /** 显示箭头：停靠时贴浮窗内侧（上沿→下方朝上 / 下沿→上方朝下），
+       *  否则按目标相对浮窗的方向贴边。 */
+      function showJumpButton(dir, anchor, edge) {
+        var btn = ensureJumpButton()
+        var placement = jumpPlacement(edge, dir, anchor)
+        var centerX = anchor.width > 0 ? anchor.left + anchor.width / 2 : window.innerWidth / 2
+        var left = centerX - 22
+        var top = Math.max(8, Math.min(placement.top, window.innerHeight - 32))
+        btn.className = 'dsh-ann-jump ' + (placement.dir === 'up' ? 'dsh-ann-jump-up' : 'dsh-ann-jump-down')
+        btn.style.left = left + 'px'
+        btn.style.top = top + 'px'
+        btn.style.bottom = ''
+        if (jumpDir !== placement.dir) {
+          jumpDir = placement.dir
+          btn.textContent = ''
+          btn.appendChild(placement.dir === 'up' ? ICONS.arrowUp() : ICONS.arrowDown())
+        }
+        btn.title = t('tip.jump')
+        btn.setAttribute('aria-label', t('tip.jump'))
+        btn.style.display = 'inline-flex'
+      }
+
+      /** 仍存活的 settle 选区 Range；失效时返回 null。 */
+      function liveSelectionRange() {
+        if (ui.selectionRange === null) return null
+        try {
+          return ui.selectionRange.startContainer !== null && ui.selectionRange.startContainer.isConnected
+            ? ui.selectionRange
+            : null
+        } catch (_) { return null }
+      }
+
+      /** 选区 Range 失效时退回文本锚点重定位。 */
+      function fallbackJumpRange() {
+        var live = liveSelectionRange()
+        if (live !== null) return live
+        return ui.pendingAnchor !== null ? locateQuote(ui.quote, ui.pendingAnchor) : null
+      }
+
+      function jumpRangeForEditing() {
+        if (ui.editingId !== null) {
+          for (var i = 0; i < ui.quotes.length; i++) {
+            if (ui.quotes[i].id === ui.editingId) return locateQuoteCached(ui.quotes[i])
+          }
+          return null
+        }
+        return fallbackJumpRange()
+      }
+
+      function jumpTargetRange() {
+        if (ui.mode === 'editing') return jumpRangeForEditing()
+        if (ui.mode !== 'actions') return null
+        return fallbackJumpRange()
+      }
+
+      /** 目标与浮窗的垂直间距（仅 actions 用来判断离得远不远）。 */
+      function jumpGap(target, anchor) {
+        if (target === null || anchor === null) return -1
+        if (target.bottom < anchor.top) return anchor.top - target.bottom
+        if (target.top > anchor.bottom) return target.top - anchor.bottom
+        return 0
+      }
+
+      /** 目标在浮窗上方还是下方。 */
+      function jumpDirection(target, anchor) {
+        if (target === null || anchor === null) return ''
+        return (target.top + target.height / 2) < (anchor.top + anchor.height / 2) ? 'up' : 'down'
+      }
+
+      /** 箭头位置与方向：工具条停在上沿时放到浮窗下方、图标朝上；停在下沿
+       *  时放到浮窗上方、图标朝下；否则按原文相对浮窗的方向贴边。 */
+      function jumpPlacement(edge, dir, anchor) {
+        if (edge === 'top') return { dir: 'up', top: anchor.bottom + 4 }
+        if (edge === 'bottom') return { dir: 'down', top: anchor.top - 32 }
+        return {
+          dir: dir,
+          top: dir === 'up' ? anchor.top - 32 : anchor.bottom + 4,
+        }
+      }
+
+      /** 工具条当前停在上沿还是下沿。 */
+      function jumpEdge(anchor) {
+        var view = conversationViewEl()
+        if (view !== null && typeof view.getBoundingClientRect === 'function') {
+          var viewRect = view.getBoundingClientRect()
+          if (viewRect.height > 0 && Math.abs(anchor.top - (viewRect.top + 8)) <= 2) return 'top'
+        }
+        var composers = hostComposerRects()
+        for (var i = 0; i < composers.length; i++) {
+          if (Math.abs(anchor.bottom - (composers[i].top - 8)) <= 2) return 'bottom'
+        }
+        return ''
+      }
+
+      /** 标签面板展开/收起时工具条宽度在过渡：持续刷新箭头，保持中轴对齐。 */
+      function trackBarWidth() {
+        var start = typeof performance !== 'undefined' ? performance.now() : Date.now()
+        function tick() {
+          if (ui.mode !== 'actions' || ui.el === null) return
+          updateJumpButton()
+          var now = typeof performance !== 'undefined' ? performance.now() : Date.now()
+          if (now - start < 460) requestAnimationFrame(tick)
+        }
+        requestAnimationFrame(tick)
+      }
+
+      function updateJumpButton() {
+        if (ui.mode === 'closed' || ui.el === null) { hideJumpButton(); return }
+        var range = jumpTargetRange()
+        if (range === null) { hideJumpButton(); return }
+        var target = null
+        var anchor = null
+        try { target = range.getBoundingClientRect() } catch (_) { target = null }
+        try { anchor = ui.el.getBoundingClientRect() } catch (_) { anchor = null }
+        if (target === null || anchor === null || target.width === 0 || target.height === 0) {
+          hideJumpButton()
+          return
+        }
+        var offscreen = target.bottom < 0 || target.top > window.innerHeight
+        // 目标被输入区/会话头部遮住时也要显示：工具条可能正停在边界，
+        // 编辑框里的原文也可能已经看不见了。
+        var composers = hostComposerRects()
+        var headers = hostHeaderRects()
+        var holes = composers.concat(headers)
+        var blocked = false
+        for (var i = 0; i < holes.length; i++) {
+          var h = holes[i]
+          if (target.right <= h.left || target.left >= h.right) continue
+          if (target.bottom <= h.top || target.top >= h.bottom) continue
+          blocked = true
+          break
+        }
+        var edge = ui.mode === 'actions' ? jumpEdge(anchor) : ''
+        // 工具条只在停靠上/下沿时显示箭头；普通跟随状态不显示。
+        if (ui.mode === 'actions' && edge === '') { hideJumpButton(); return }
+        if (ui.mode === 'editing') {
+          // 编辑框：原文仍可见、没有被输入区/头部挡住时不显示箭头。
+          if (!offscreen && !blocked) { hideJumpButton(); return }
+        } else if (!offscreen && !blocked && jumpGap(target, anchor) <= JUMP_GAP) {
+          hideJumpButton()
+          return
+        }
+        showJumpButton(jumpDirection(target, anchor), anchor, edge)
+      }
+
+      function jumpToTarget() {
+        var range = jumpTargetRange()
+        if (range !== null && scrollRangeIntoView(range)) {
+          onLayoutChange()
+          return
+        }
+        showToast(t('toast.jumpLost'))
+      }
+
+      /** 工具条停在遮挡区洞口朝向正文的一侧：头部下方、输入区上方。
+       *  按遮挡区处在视口上半/下半判断朝向（底部输入区只推到上方，顶部
+       *  头部只推到下方），不跟随工具条自身在洞内的位置。 */
+      function clampBarTop(rect, holes, viewportHeight) {
+        var top = rect.top
+        var height = rect.height
+        for (var i = 0; i < holes.length; i++) {
+          var h = holes[i]
+          if (rect.left >= h.right || rect.right <= h.left) continue
+          if (rect.top >= h.bottom || rect.bottom <= h.top) continue
+          var below = h.top + h.height / 2 > viewportHeight / 2
+          top = below ? h.top - height - 8 : h.bottom + 8
+        }
+        return Math.max(8, Math.min(top, viewportHeight - height - 8))
+      }
+
+      function applyBarClamp(bar) {
+        if (bar === null || bar === undefined || typeof bar.getBoundingClientRect !== 'function') return
+        var rect = bar.getBoundingClientRect()
+        // 输入区（composerStack）上沿是硬上限：无论工具条与洞是否相交，都不能
+        // 进入输入区。头部/输入区命中时 clampBarTop 先给出正文侧边界。
+        var composers = hostComposerRects()
+        var top = clampBarTop(rect, composers.concat(hostHeaderRects()), window.innerHeight)
+        for (var i = 0; i < composers.length; i++) {
+          var c = composers[i]
+          if (rect.left >= c.right || rect.right <= c.left) continue
+          top = Math.min(top, c.top - rect.height - 8)
+        }
+        // 顶部栏下沿：正文滚动区上沿作为上边界；不再用它的 bottom，因为输入区
+        // 可能覆盖滚动区底部。
+        var view = conversationViewEl()
+        if (view !== null && typeof view.getBoundingClientRect === 'function') {
+          var viewRect = view.getBoundingClientRect()
+          if (viewRect.width > 0 && viewRect.height > 0) top = Math.max(top, viewRect.top + 8)
+        }
+        top = Math.max(8, Math.min(top, window.innerHeight - rect.height - 8))
+        if (top === ui.pos.top) return
+        ui.pos.top = top
+        bar.style.top = top + 'px'
       }
 
       /** 展开/收起标签面板：只增删面板本身，不重建整条工具条——重建会把
@@ -1883,6 +2147,7 @@ window.__ModuleLoader__.load({
           if (toggle !== null) toggle.setAttribute('aria-expanded', 'false')
           if (annotate !== null) annotate.classList.remove('dsh-ann-ghost-dim')
         }
+        trackBarWidth()
       }
 
       /** 把整条工具条钳回视口内（展开标签/页面缩放后调用）。 */
@@ -2046,6 +2311,7 @@ window.__ModuleLoader__.load({
         }
         card.style.left = ui.pos.left + 'px'
         card.style.top = ui.pos.top + 'px'
+        updateJumpButton()
       }
 
       function makeEditorDraggable(head, card) {
@@ -2204,11 +2470,13 @@ window.__ModuleLoader__.load({
         return out
       }
 
-/** 输入区（整块 composer 容器，含输入卡片与下方统计行）——不是单个
-       *  `[data-composer-card]`：卡片下方那段同样被容器盖住，编号落在那里
-       *  会像「显示在对话区下面」。找不到容器时退回输入卡片。 */
+/** 输入区（整块 composer 容器）——优先 `composerStack`：它无缝覆盖
+       *  输入卡片与下方统计行；`composerSeat` 次之；`*_card` 与周围元素之间
+       *  有缝，只在都找不到时兜底。 */
       function hostComposerRects() {
-        var rects = hostLocalRects('composerSeat')
+        var rects = hostLocalRects('composerStack')
+        if (rects.length > 0) return rects
+        rects = hostLocalRects('composerSeat')
         if (rects.length > 0) return rects
         var card = composerCardEl()
         if (card === null) return []
@@ -2871,6 +3139,7 @@ window.__ModuleLoader__.load({
         // 放弃本次批注：撤销「待批注」预览高亮（保存路径同样经过这里，
         // 随后 renderMarkers 由正式标记接管）。
         paintPreviewHighlight()
+        hideJumpButton()
         render()
       }
 
@@ -3729,6 +3998,7 @@ window.__ModuleLoader__.load({
         host.remove()
         overlay.remove()
         numLayer.remove()
+        if (jumpBtn) { jumpBtn.remove(); jumpBtn = null }
       }
     }
 
